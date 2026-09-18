@@ -1,6 +1,8 @@
 # YouTube Improver
 
-A Chrome (Manifest V3) extension that customizes YouTube's Home and Subscriptions pages, controls default video/Shorts playback quality and speed, tames autoplay, and adds a few FrankerFaceZ/Enhancer-for-YouTube-style tweaks (hide comments/related videos, theater mode automation, a custom "Cinema mode" dimming backdrop).
+A Chrome (Manifest V3) extension that customizes YouTube's Home and Subscriptions pages, controls default video/Shorts playback quality, speed and volume (including mouse-wheel volume over the player), tames autoplay, and adds a few FrankerFaceZ/Enhancer-for-YouTube-style tweaks (hide comments/related videos, theater mode automation, a custom "Cinema mode" dimming backdrop).
+
+The content script runs at `document_start` so the wheel listener is registered before YouTube binds its own handlers (otherwise adjusting volume on Shorts would also skip to the next video). Anything that injects CSS or reads the DOM therefore has to tolerate an empty document on its first pass — `src/content/lib/dom.ts` re-homes injected `<style>` tags into `<head>` once it exists, and one-shot actions commit their "already applied" key only after a write actually lands, so a pass against a bare DOM doesn't burn the attempt.
 
 This is a v1 MVP scaffold — a working extension with a curated first slice of features, built to be extended with the rest of the Enhancer-for-YouTube-style feature set over time.
 
@@ -39,7 +41,7 @@ Note: `bun run dev` starts Vite's dev server, and `vite-plugin-web-extension` wi
 - `manifest.json` — MV3 manifest (background service worker, content script, options page)
 - `src/types/settings.ts` — the single source of truth for all settings: the `Settings` interface, defaults, and `chrome.storage.sync` read/write/subscribe helpers
 - `src/content/lib/` — shared content-script helpers (`dom.ts` for waiting-for-elements and CSS injection, `youtubeNav.ts` for detecting YouTube's SPA navigation and page type)
-- `src/content/features/*.ts` — one file per feature area (Home page, Subscriptions page, Shorts quality, video quality/speed, autoplay control, hide comments/related, theater/cinema mode). Each exports a single `apply*(settings)` function called on every YouTube navigation and every settings change.
+- `src/content/features/*.ts` — one file per feature area (Home page, Subscriptions page, Shorts quality, video quality/speed, volume, autoplay control, hide comments/related, theater/cinema mode). Each exports a single `apply*(settings)` function called on every YouTube navigation and every settings change.
 - `src/content/index.ts` — wires all feature modules together
 - `src/background/index.ts` — sets defaults on install, opens the options page when the toolbar icon is clicked
 - `src/options/` — the settings UI (plain TypeScript + DOM APIs, no framework)

@@ -372,6 +372,47 @@ function buildApp(root: HTMLElement): void {
       playbackSpeedField('video-default-speed', 'Default playback speed'),
     ),
     section(
+      'Audio & volume',
+      checkboxField(
+        'volume-set-default',
+        'Set a default volume on every video',
+        () => state.volume.setDefaultVolume,
+        (v) => {
+          state.volume.setDefaultVolume = v
+        },
+        'Applies to both regular videos and Shorts, once per video.',
+      ),
+      rangeField(
+        'volume-default-level',
+        'Default volume',
+        0,
+        100,
+        () => state.volume.defaultVolume,
+        (v) => {
+          state.volume.defaultVolume = v
+        },
+      ),
+      checkboxField(
+        'volume-wheel-enabled',
+        'Change volume with the mouse wheel over the player',
+        () => state.volume.wheelVolumeEnabled,
+        (v) => {
+          state.volume.wheelVolumeEnabled = v
+        },
+        'Works on regular videos and Shorts, and suppresses the page scroll (and Shorts skipping) while adjusting.',
+      ),
+      rangeField(
+        'volume-wheel-step',
+        'Mouse wheel volume step',
+        1,
+        25,
+        () => state.volume.wheelVolumeStep,
+        (v) => {
+          state.volume.wheelVolumeStep = v
+        },
+      ),
+    ),
+    section(
       'Autoplay',
       checkboxField(
         'autoplay-disable',

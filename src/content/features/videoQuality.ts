@@ -10,6 +10,7 @@ interface YouTubePlayerElement extends HTMLElement {
 }
 
 let lastAppliedKey: string | null = null
+let applyGeneration = 0
 let latestVideoSettings: Settings['video'] | null = null
 let fullscreenListenerRegistered = false
 
@@ -23,16 +24,24 @@ export function applyVideoSettings(settings: Settings['video']): void {
   // Keyed on href+quality+speed (not just href) so a settings-only change on the same video still re-applies
   const key = `${location.href}|${settings.defaultQuality}|${settings.defaultPlaybackSpeed}`
   if (key === lastAppliedKey) return
-  lastAppliedKey = key
+
+  const generation = ++applyGeneration
 
   void (async () => {
     const player = await waitForElement<YouTubePlayerElement>(PLAYER_SELECTOR)
-    if (!player) return
-    if (getYouTubePageType() !== 'watch' || lastAppliedKey !== key) return // stale: settings/navigation changed again while we waited
+    if (!player || generation !== applyGeneration || getYouTubePageType() !== 'watch') return
+
+    // The player element can be inserted before YouTube attaches its imperative API, so wait for the media
+    const video = await waitForElement('video', { root: player })
+    if (!video || generation !== applyGeneration) return
+
+    // Key committed only after a real write, so an attempt that lands before the API is ready gets retried
+    // by the next navigation or settings event instead of being silently burned
+    if (typeof player.setPlaybackRate !== 'function') return
+
     applyQuality(player, settings.defaultQuality)
-    if (typeof player.setPlaybackRate === 'function') {
-      player.setPlaybackRate(settings.defaultPlaybackSpeed)
-    }
+    player.setPlaybackRate(settings.defaultPlaybackSpeed)
+    lastAppliedKey = key
   })()
 }
 

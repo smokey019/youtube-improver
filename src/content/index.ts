@@ -4,6 +4,7 @@ import { applyHomePage } from './features/homePage'
 import { applySubscriptionsPage } from './features/subscriptionsPage'
 import { applyShortsSettings } from './features/shortsQuality'
 import { applyVideoSettings } from './features/videoQuality'
+import { applyVolumeControl } from './features/volumeControl'
 import { applyAutoplayControl } from './features/autoplayControl'
 import { applyHideElements } from './features/hideElements'
 import { applyTheaterCinemaMode } from './features/theaterCinemaMode'
@@ -13,6 +14,7 @@ function applyAll(settings: Settings): void {
   applySubscriptionsPage(settings.subscriptionsPage)
   applyShortsSettings(settings.shorts)
   applyVideoSettings(settings.video)
+  applyVolumeControl(settings.volume)
   applyAutoplayControl(settings.autoplay)
   applyHideElements(settings.hide)
   applyTheaterCinemaMode(settings.theater)

@@ -53,6 +53,14 @@ export interface Settings {
     defaultQualityFullscreen: QualityLevel
     defaultPlaybackSpeed: PlaybackSpeed
   }
+  volume: {
+    setDefaultVolume: boolean
+    /** 0-100 */
+    defaultVolume: number
+    wheelVolumeEnabled: boolean
+    /** 1-25, percentage points per wheel tick */
+    wheelVolumeStep: number
+  }
   autoplay: {
     disableAutoplay: boolean
     blockBackgroundTabAutoplay: boolean
@@ -78,6 +86,7 @@ export const DEFAULT_SETTINGS: Settings = {
   subscriptionsPage: { enabled: false, hideShorts: false, videosPerRow: null },
   shorts: { hideInFeeds: false, defaultQuality: 'auto' },
   video: { defaultQuality: 'auto', defaultQualityFullscreen: 'auto', defaultPlaybackSpeed: 1 },
+  volume: { setDefaultVolume: true, defaultVolume: 15, wheelVolumeEnabled: true, wheelVolumeStep: 5 },
   autoplay: {
     disableAutoplay: false,
     blockBackgroundTabAutoplay: false,
@@ -97,6 +106,7 @@ function mergeDefaults(partial: Partial<Settings> | undefined | null): Settings 
     subscriptionsPage: { ...DEFAULT_SETTINGS.subscriptionsPage, ...partial.subscriptionsPage },
     shorts: { ...DEFAULT_SETTINGS.shorts, ...partial.shorts },
     video: { ...DEFAULT_SETTINGS.video, ...partial.video },
+    volume: { ...DEFAULT_SETTINGS.volume, ...partial.volume },
     autoplay: { ...DEFAULT_SETTINGS.autoplay, ...partial.autoplay },
     hide: { ...DEFAULT_SETTINGS.hide, ...partial.hide },
     theater: { ...DEFAULT_SETTINGS.theater, ...partial.theater },

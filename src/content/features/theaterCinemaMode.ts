@@ -11,6 +11,7 @@ const BACKDROP_ID = 'ytimprover-cinema-backdrop'
 const BACKDROP_Z_INDEX = 2000
 
 let lastAutoTheaterAppliedFor = ''
+let theaterGeneration = 0
 
 function hexToRgba(hex: string, opacityPercent: number): string {
   const normalized = hex.replace('#', '')
@@ -54,15 +55,29 @@ function removeBackdrop(): void {
 function applyAutoTheaterModeOnce(): void {
   if (lastAutoTheaterAppliedFor === location.href) return
   const forHref = location.href
-  lastAutoTheaterAppliedFor = forHref
+  const generation = ++theaterGeneration
 
   void (async () => {
     const flexy = await waitForElement<HTMLElement>(SELECTOR_WATCH_FLEXY)
-    if (!flexy || location.href !== forHref || flexy.hasAttribute('theater')) return
-    // The theater button mounts slightly after ytd-watch-flexy itself, so wait for it too rather than a bare querySelector
+    if (!flexy || generation !== theaterGeneration || location.href !== forHref) return
+    if (flexy.hasAttribute('theater')) {
+      lastAutoTheaterAppliedFor = forHref
+      return
+    }
+
+    // The theater button mounts slightly after ytd-watch-flexy itself, so wait for it too
     const button = await waitForElement<HTMLElement>(SELECTOR_THEATER_BUTTON)
-    if (!button || location.href !== forHref || flexy.hasAttribute('theater')) return
+    if (!button || generation !== theaterGeneration || location.href !== forHref) return
+    if (flexy.hasAttribute('theater')) {
+      lastAutoTheaterAppliedFor = forHref
+      return
+    }
+
     button.click()
+    // Committed on the click itself, not on a follow-up attribute check: Polymer reflects `theater`
+    // asynchronously, so verifying too early would leave this unarmed and the next pass would re-click,
+    // toggling theater mode back off
+    lastAutoTheaterAppliedFor = forHref
   })()
 }
 

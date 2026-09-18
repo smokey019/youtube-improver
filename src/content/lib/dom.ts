@@ -28,18 +28,29 @@ export function waitForElement<T extends Element = Element>(
 
 const injectedStyles = new Map<string, HTMLStyleElement>()
 
-/** Creates (or updates) a <style> tag scoped by `id`. Pass empty string to effectively disable it. */
+/**
+ * Creates (or updates) a <style> tag scoped by `id`. Pass an empty string to disable it.
+ *
+ * The tag re-homes itself into <head> as soon as one exists. The content script runs at document_start, so
+ * the first injection can land in an empty documentElement and end up ahead of YouTube's own stylesheets,
+ * where it would lose cascade ties. Callers re-run on DOMContentLoaded and every navigation, so the move
+ * happens on the next pass and then stays put.
+ */
 export function setInjectedCSS(id: string, css: string): void {
   let style = injectedStyles.get(id)
   if (!style) {
     style = document.createElement('style')
     style.id = `ytimprover-${id}`
-    document.documentElement.appendChild(style)
     injectedStyles.set(id, style)
   }
+
+  const parent: Node = document.head ?? document.documentElement
+  if (style.parentNode !== parent) parent.appendChild(style)
+
   style.textContent = css
 }
 
 export function clearInjectedCSS(id: string): void {
-  setInjectedCSS(id, '')
+  const style = injectedStyles.get(id)
+  if (style) style.textContent = ''
 }
