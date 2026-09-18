@@ -71,8 +71,12 @@ export function applyHomePage(settings: Settings['homePage']): void {
     clearInjectedCSS(CSS_ID_VIDEOS_PER_ROW)
   }
 
-  if (settings.hideShelvesContaining.length > 0) {
-    activeNeedles = settings.hideShelvesContaining
+  // "shorts" rides along as a title-text needle too: a JS-matched fallback for the CSS is-shorts attribute
+  // selector above, confirmed against real YouTube data where the shelf's title is literally "Shorts"
+  const needles = settings.hideShorts ? [...settings.hideShelvesContaining, 'shorts'] : settings.hideShelvesContaining
+
+  if (needles.length > 0) {
+    activeNeedles = needles
     setInjectedCSS(CSS_ID_MATCHED_SHELVES, MATCHED_SHELF_CSS)
     void setupShelfWatcher(activeNeedles)
   } else {

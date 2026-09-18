@@ -39,7 +39,6 @@ export interface Settings {
   }
   subscriptionsPage: {
     enabled: boolean
-    defaultView: 'grid' | 'list'
     hideShorts: boolean
     videosPerRow: number | null
   }
@@ -75,7 +74,7 @@ export interface Settings {
 
 export const DEFAULT_SETTINGS: Settings = {
   homePage: { enabled: false, hideShorts: false, hideShelvesContaining: [], videosPerRow: null },
-  subscriptionsPage: { enabled: false, defaultView: 'grid', hideShorts: false, videosPerRow: null },
+  subscriptionsPage: { enabled: false, hideShorts: false, videosPerRow: null },
   shorts: { hideInFeeds: false, defaultQuality: 'auto' },
   video: { defaultQuality: 'auto', defaultQualityFullscreen: 'auto', defaultPlaybackSpeed: 1 },
   autoplay: {

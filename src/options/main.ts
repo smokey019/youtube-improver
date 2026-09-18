@@ -303,18 +303,6 @@ function buildApp(root: HTMLElement): void {
           state.subscriptionsPage.enabled = v
         },
       ),
-      selectField<'grid' | 'list'>(
-        'subs-default-view',
-        'Default view',
-        [
-          { value: 'grid', label: 'Grid' },
-          { value: 'list', label: 'List' },
-        ],
-        () => state.subscriptionsPage.defaultView,
-        (v) => {
-          state.subscriptionsPage.defaultView = v
-        },
-      ),
       checkboxField(
         'subs-hide-shorts',
         'Hide Shorts shelf',

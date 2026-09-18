@@ -42,12 +42,19 @@ After changing code, re-run `npm run build` (or use `npm run dev`) and click the
 
 ## Known limitations (read before relying on these)
 
-YouTube's internal DOM (custom element names, class names, button labels) changes periodically and isn't something that can be verified without testing against the live site. Selectors are centralized as named constants near the top of each feature file specifically so they're easy to find and patch. Known weak spots, worth checking first if something doesn't work:
+YouTube's internal DOM (custom element names, class names, button labels) changes periodically. Selectors are centralized as named constants near the top of each feature file specifically so they're easy to find and patch.
 
-- **Subscriptions "Default view" (grid/list)** — relies on YouTube's native toggle buttons exposing a recognizable `aria-label`/`title` and a pressed/selected state; if YouTube's current markup doesn't expose that, this feature silently no-ops rather than risk clicking the wrong control.
-- **Shorts quality** — depends on `#shorts-player` and an `is-active` attribute on the active feed item; both are best-effort.
+Selectors were cross-checked against real saved YouTube pages (Home, Subscriptions, a Shorts video). That surfaced one important caveat: a plain browser "Save As HTML" does **not** capture YouTube's shadow-DOM-rendered content — only the top-level shell and the raw `ytInitialData`/player-config JSON survive. That JSON confirmed a few things directly and ruled out one planned feature entirely, but most rendered-DOM selectors below remain best-effort until checked against the live DOM (DevTools Elements panel, which does pierce shadow DOM):
+
+- **Confirmed correct**: the player element ids `#shorts-player` and `#movie_player` — found verbatim in YouTube's own client bootstrap config.
+- **Removed**: Subscriptions "Default view" (grid/list) was dropped entirely — there is no trace of a view-mode toggle anywhere in the page data (no `aria-label`/`role="button"`/`aria-pressed` in the DOM-adjacent shell, and no view-mode field anywhere in `ytInitialData`), consistent with the Subscriptions feed being a single fixed-layout grid on current YouTube. Not worth keeping a settings toggle for a control that doesn't exist.
+- **Shorts quality** — `#shorts-player` id is confirmed; the active-item detection (`ytd-reel-video-renderer[is-active]`) and container (`ytd-shorts`) are still unverified.
+- **Shorts comments** — confirmed Shorts uses a slide-out engagement panel instead of `ytd-comments#comments`; "Hide comments" now also targets `ytd-engagement-panel-section-list-renderer[target-id="shorts-engagement-panel-comments-section"]`, though that `target-id` value is inferred from a JSON identifier, not observed rendered markup.
+- **Home/Subscriptions Shorts shelf** — still primarily targets an `is-shorts` attribute (a long-standing, widely-used YouTube convention, but unconfirmed here). On the Home page, "Hide Shorts shelf" now also feeds "shorts" into the same title-text matcher used by "Hide shelves containing" as a fallback, since the data confirms the shelf's title is literally "Shorts".
 - **Autoplay blocking** — YouTube exposes no signal for "was this play autoplay or user-initiated," so blocking uses a short timing heuristic (pause a video that starts playing within ~1.5s of a fresh navigation). This is an approximation, not a guarantee.
 - **Cinema mode** backdrop z-index may need tuning against YouTube's own stacking contexts once tested visually.
+
+If you want full certainty on the remaining best-effort selectors, the most useful artifact isn't another "Save As HTML" (same shadow-DOM gap) — it's either live DevTools inspection, or a snippet run in the live page's console that walks open shadow roots and dumps the relevant markup to a file.
 
 ## Roadmap (not yet built)
 
