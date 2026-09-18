@@ -32,6 +32,7 @@ export interface Settings {
   homePage: {
     enabled: boolean
     hideShorts: boolean
+    hidePlayables: boolean
     /** Case-insensitive shelf-title substrings; a shelf is hidden if its title contains any of these. */
     hideShelvesContaining: string[]
     /** null = leave YouTube's own responsive layout alone */
@@ -73,7 +74,7 @@ export interface Settings {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
-  homePage: { enabled: false, hideShorts: false, hideShelvesContaining: [], videosPerRow: null },
+  homePage: { enabled: false, hideShorts: false, hidePlayables: true, hideShelvesContaining: [], videosPerRow: null },
   subscriptionsPage: { enabled: false, hideShorts: false, videosPerRow: null },
   shorts: { hideInFeeds: false, defaultQuality: 'auto' },
   video: { defaultQuality: 'auto', defaultQualityFullscreen: 'auto', defaultPlaybackSpeed: 1 },

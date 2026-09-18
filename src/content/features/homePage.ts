@@ -3,6 +3,7 @@ import { waitForElement, setInjectedCSS, clearInjectedCSS } from '../lib/dom'
 import { getYouTubePageType } from '../lib/youtubeNav'
 
 const CSS_ID_SHORTS_SHELF = 'home-hide-shorts-shelf'
+const CSS_ID_PLAYABLES_SHELF = 'home-hide-playables-shelf'
 const CSS_ID_MATCHED_SHELVES = 'home-hide-matched-shelves'
 const CSS_ID_VIDEOS_PER_ROW = 'home-videos-per-row'
 
@@ -17,6 +18,14 @@ const MATCHED_SHELF_CLASS = 'ytimprover-hidden-shelf'
 // is-shorts is a boolean attribute YouTube toggles on the shelf renderer itself, not its section wrapper
 const SHORTS_SHELF_CSS = `${SECTION_SELECTOR}:has(ytd-rich-shelf-renderer[is-shorts]) { display: none !important; }`
 const MATCHED_SHELF_CSS = `.${MATCHED_SHELF_CLASS} { display: none !important; }`
+
+// Matched on the shelf's /playables header link and its mini-game cards rather than its "YouTube Playables"
+// title text, so this keeps working when YouTube's UI is in another language
+const PLAYABLES_SHELF_CSS = `${SECTION_SELECTOR}:has(a[href^="/playables"]),
+${SECTION_SELECTOR}:has(ytd-rich-item-renderer[is-mini-game-card-shelf]),
+${SECTION_SELECTOR}:has(ytd-mini-game-card-view-model) {
+  display: none !important;
+}`
 
 /**
  * YouTube sizes each item as width: calc(100%/var(--ytd-rich-grid-items-per-row) - item-margin) inside a
@@ -60,6 +69,7 @@ async function setupShelfWatcher(needles: string[]): Promise<void> {
 
 function cleanup(): void {
   clearInjectedCSS(CSS_ID_SHORTS_SHELF)
+  clearInjectedCSS(CSS_ID_PLAYABLES_SHELF)
   clearInjectedCSS(CSS_ID_MATCHED_SHELVES)
   clearInjectedCSS(CSS_ID_VIDEOS_PER_ROW)
   disconnectShelfObserver()
@@ -74,6 +84,7 @@ export function applyHomePage(settings: Settings['homePage']): void {
   }
 
   setInjectedCSS(CSS_ID_SHORTS_SHELF, settings.hideShorts ? SHORTS_SHELF_CSS : '')
+  setInjectedCSS(CSS_ID_PLAYABLES_SHELF, settings.hidePlayables ? PLAYABLES_SHELF_CSS : '')
 
   if (settings.videosPerRow !== null) {
     setInjectedCSS(CSS_ID_VIDEOS_PER_ROW, videosPerRowCSS(settings.videosPerRow))

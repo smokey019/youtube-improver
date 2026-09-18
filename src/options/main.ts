@@ -275,6 +275,14 @@ function buildApp(root: HTMLElement): void {
           state.homePage.hideShorts = v
         },
       ),
+      checkboxField(
+        'home-hide-playables',
+        'Hide YouTube Playables shelf',
+        () => state.homePage.hidePlayables,
+        (v) => {
+          state.homePage.hidePlayables = v
+        },
+      ),
       tagsField(
         'home-hide-shelves',
         'Hide shelves containing',
