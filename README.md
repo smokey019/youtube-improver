@@ -6,9 +6,11 @@ This is a v1 MVP scaffold — a working extension with a curated first slice of 
 
 ## Setup
 
+Requires [Bun](https://bun.sh) (developed against 1.4.x).
+
 ```
-npm install
-npm run build
+bun install
+bun run build
 ```
 
 This produces a loadable extension in `dist/`.
@@ -23,12 +25,14 @@ This produces a loadable extension in `dist/`.
 ## Development
 
 ```
-npm run dev        # Vite dev/watch mode
-npm run typecheck  # tsc --noEmit
-npm run build      # production build to dist/
+bun run dev        # Vite dev/watch mode
+bun run typecheck  # tsc --noEmit
+bun run build      # production build to dist/
 ```
 
-After changing code, re-run `npm run build` (or use `npm run dev`) and click the reload icon for the extension on `chrome://extensions` to pick up changes.
+Vite itself runs on the Bun runtime (`bun --bun vite`), not Node. After changing code, re-run `bun run build` and click the reload icon for the extension on `chrome://extensions` to pick up changes.
+
+Note: `bun run dev` starts Vite's dev server, and `vite-plugin-web-extension` will try to auto-launch a browser with the extension loaded. If that gets in the way, pass `disableAutoLaunch: true` to the plugin in `vite.config.ts` — the build-and-load-unpacked flow above doesn't need the dev server at all.
 
 ## Architecture
 
