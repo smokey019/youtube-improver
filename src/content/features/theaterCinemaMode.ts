@@ -2,7 +2,9 @@ import type { Settings } from '../../types/settings'
 import { waitForElement } from '../lib/dom'
 import { getYouTubePageType } from '../lib/youtubeNav'
 
-const SELECTOR_WATCH_FLEXY = 'ytd-watch-flexy'
+// :not([hidden]) matters: YouTube's SPA keeps a previous page's ytd-watch-flexy mounted-but-hidden for fast
+// back-navigation, and a bare querySelector could otherwise grab that stale instance instead of the live one
+const SELECTOR_WATCH_FLEXY = 'ytd-watch-flexy:not([hidden])'
 const SELECTOR_THEATER_BUTTON = '.ytp-size-button'
 const BACKDROP_ID = 'ytimprover-cinema-backdrop'
 // Sits above YT's page background but below masthead (~2065) and player chrome; tune after live-page verification.

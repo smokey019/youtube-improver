@@ -5,9 +5,8 @@ const CSS_ID_COMMENTS = 'hide-comments'
 const CSS_ID_RELATED_VIDEOS = 'hide-related-videos'
 
 const SELECTOR_COMMENTS = 'ytd-comments#comments'
-// Shorts' comments live in a slide-out engagement panel, not ytd-comments; target-id inferred from its
-// "shorts-engagement-panel-comments-section" JSON identifier, unconfirmed against live rendered markup
-const SELECTOR_COMMENTS_SHORTS = 'ytd-engagement-panel-section-list-renderer[target-id="shorts-engagement-panel-comments-section"]'
+// Shorts' comments live in a slide-out engagement panel, not ytd-comments; confirmed via live-DOM dump
+const SELECTOR_COMMENTS_SHORTS = 'ytd-engagement-panel-section-list-renderer[target-id="engagement-panel-comments-section"]'
 const SELECTOR_RELATED_VIDEOS = 'ytd-watch-next-secondary-results-renderer'
 
 export function applyHideElements(settings: Settings['hide']): void {

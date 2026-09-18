@@ -44,17 +44,25 @@ After changing code, re-run `npm run build` (or use `npm run dev`) and click the
 
 YouTube's internal DOM (custom element names, class names, button labels) changes periodically. Selectors are centralized as named constants near the top of each feature file specifically so they're easy to find and patch.
 
-Selectors were cross-checked against real saved YouTube pages (Home, Subscriptions, a Shorts video). That surfaced one important caveat: a plain browser "Save As HTML" does **not** capture YouTube's shadow-DOM-rendered content — only the top-level shell and the raw `ytInitialData`/player-config JSON survive. That JSON confirmed a few things directly and ruled out one planned feature entirely, but most rendered-DOM selectors below remain best-effort until checked against the live DOM (DevTools Elements panel, which does pierce shadow DOM):
+Selectors were cross-checked twice: first against real saved YouTube pages (Home, Subscriptions, a Shorts video), then against JSON dumps of those same pages' actual live, hydrated DOM (including shadow roots — a plain browser "Save As HTML" can't capture YouTube's shadow-DOM-rendered content, only a script run in the live page's own console can walk it).
 
-- **Confirmed correct**: the player element ids `#shorts-player` and `#movie_player` — found verbatim in YouTube's own client bootstrap config.
-- **Removed**: Subscriptions "Default view" (grid/list) was dropped entirely — there is no trace of a view-mode toggle anywhere in the page data (no `aria-label`/`role="button"`/`aria-pressed` in the DOM-adjacent shell, and no view-mode field anywhere in `ytInitialData`), consistent with the Subscriptions feed being a single fixed-layout grid on current YouTube. Not worth keeping a settings toggle for a control that doesn't exist.
-- **Shorts quality** — `#shorts-player` id is confirmed; the active-item detection (`ytd-reel-video-renderer[is-active]`) and container (`ytd-shorts`) are still unverified.
-- **Shorts comments** — confirmed Shorts uses a slide-out engagement panel instead of `ytd-comments#comments`; "Hide comments" now also targets `ytd-engagement-panel-section-list-renderer[target-id="shorts-engagement-panel-comments-section"]`, though that `target-id` value is inferred from a JSON identifier, not observed rendered markup.
-- **Home/Subscriptions Shorts shelf** — still primarily targets an `is-shorts` attribute (a long-standing, widely-used YouTube convention, but unconfirmed here). On the Home page, "Hide Shorts shelf" now also feeds "shorts" into the same title-text matcher used by "Hide shelves containing" as a fallback, since the data confirms the shelf's title is literally "Shorts".
-- **Autoplay blocking** — YouTube exposes no signal for "was this play autoplay or user-initiated," so blocking uses a short timing heuristic (pause a video that starts playing within ~1.5s of a fresh navigation). This is an approximation, not a guarantee.
-- **Cinema mode** backdrop z-index may need tuning against YouTube's own stacking contexts once tested visually.
+**Confirmed correct as-is** (live-DOM verified):
+- Home & Subscriptions: `ytd-browse[page-subtype="..."]`, the Shorts shelf marker `ytd-rich-shelf-renderer[is-shorts]`, and the grid contents container `ytd-rich-grid-renderer #contents` (the extra `.ytd-rich-grid-renderer` class qualifier we originally had was dropped — strongly implied by every child's style-scope class but not directly readable off a native `<div>`, so keeping the unverifiable half added risk for no benefit).
+- Player element ids `#shorts-player` and `#movie_player` — found verbatim in YouTube's own client bootstrap config.
+- Shorts container `ytd-shorts`.
+- Subscriptions "Default view" (grid/list) toggle really doesn't exist — this was re-checked against the live hydrated DOM (not just the earlier static save) and confirmed absent again: zero `aria-pressed`/`aria-selected`/relevant `aria-label` anywhere on the page.
 
-If you want full certainty on the remaining best-effort selectors, the most useful artifact isn't another "Save As HTML" (same shadow-DOM gap) — it's either live DevTools inspection, or a snippet run in the live page's console that walks open shadow roots and dumps the relevant markup to a file.
+**Fixed real bugs found by the live-DOM check:**
+- Home's shelf-title selector assumed a `<span id="title-text">`; it's actually a `<div>`, so the old selector never matched anything — fixed to a bare `#title-text`.
+- Shorts comments panel's `target-id` was guessed as `"shorts-engagement-panel-comments-section"`; the real value has no `shorts-` prefix — fixed to `"engagement-panel-comments-section"`.
+- Shorts quality's re-apply-on-scroll logic watched for an `is-active` attribute that doesn't exist anywhere in the live DOM (confirmed via a 12,790-node dump) — it was dead code that silently never fired. Replaced with a childList observer that re-applies quality whenever the mounted reel changes.
+- Theater mode's `ytd-watch-flexy` lookup could have matched a stale, hidden instance — YouTube's SPA keeps a previous page's watch component mounted-but-hidden in the DOM for fast back-navigation (confirmed: a hidden `ytd-watch-flexy` was present even on a Shorts page). Selector now excludes `[hidden]`.
+
+**Still best-effort / unverified:**
+- Shorts active-item detection no longer relies on a nonexistent attribute, but the underlying assumption (a single `ytd-reel-video-renderer` gets swapped per Short, rather than multiple coexisting with a flag) is based on one snapshot, not confirmed behavior while actively scrolling.
+- Autoplay blocking's `.ytp-autonav-toggle-button` and native player-control classes generally — these are plain (non-hyphenated) elements our DOM-dump tooling can't capture at all, so they remain unverified either way.
+- Autoplay blocking's timing heuristic — YouTube exposes no signal for "was this play autoplay or user-initiated," so it pauses a video that starts playing within ~1.5s of a fresh navigation. This is an approximation, not a guarantee.
+- Cinema mode backdrop z-index may need tuning against YouTube's own stacking contexts once tested visually.
 
 ## Roadmap (not yet built)
 

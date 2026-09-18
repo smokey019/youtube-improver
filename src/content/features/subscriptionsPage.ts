@@ -46,7 +46,7 @@ function applyVideosPerRow(videosPerRow: number | null): void {
     `${SUBSCRIPTIONS_BROWSE_SELECTOR} ytd-rich-grid-renderer {
   --ytd-rich-grid-items-per-row: ${columns};
 }
-${SUBSCRIPTIONS_BROWSE_SELECTOR} ytd-rich-grid-renderer #contents.ytd-rich-grid-renderer {
+${SUBSCRIPTIONS_BROWSE_SELECTOR} ytd-rich-grid-renderer #contents {
   display: grid !important;
   grid-template-columns: repeat(${columns}, minmax(0, 1fr)) !important;
 }`

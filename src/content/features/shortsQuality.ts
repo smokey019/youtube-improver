@@ -7,10 +7,7 @@ const HIDE_FEEDS_CSS =
   'ytd-rich-shelf-renderer[is-shorts], ytd-reel-shelf-renderer { display: none !important; }'
 
 const SHORTS_PLAYER_SELECTOR = '#shorts-player'
-// Best-effort container for the vertical Shorts feed; watched for the active-item attribute below.
 const SHORTS_CONTAINER_SELECTOR = 'ytd-shorts'
-const REEL_VIDEO_RENDERER_SELECTOR = 'ytd-reel-video-renderer'
-const ACTIVE_ITEM_ATTR = 'is-active'
 
 interface ShortsPlayerElement extends HTMLElement {
   setPlaybackQualityRange?: (min: QualityLevel, max: QualityLevel) => void
@@ -67,20 +64,13 @@ async function ensureQualityObserver(): Promise<void> {
 
   if (!container || qualityObserver || getYouTubePageType() !== 'shorts' || desiredQuality === 'auto') return
 
-  qualityObserver = new MutationObserver((mutations) => {
-    const becameActive = mutations.some(
-      (mutation) =>
-        mutation.attributeName === ACTIVE_ITEM_ATTR &&
-        mutation.target instanceof Element &&
-        mutation.target.matches(REEL_VIDEO_RENDERER_SELECTOR) &&
-        mutation.target.hasAttribute(ACTIVE_ITEM_ATTR)
-    )
-    if (becameActive) void setActivePlayerQuality(desiredQuality)
-  })
+  // YouTube mounts a single ytd-reel-video-renderer at a time and swaps it out as the user scrolls between
+  // Shorts (confirmed via live-DOM dump - there's no is-active attribute to watch), so re-apply on any
+  // childList change under the container rather than trying to detect an "active" flag that doesn't exist
+  qualityObserver = new MutationObserver(() => void setActivePlayerQuality(desiredQuality))
 
   qualityObserver.observe(container, {
-    attributes: true,
-    attributeFilter: [ACTIVE_ITEM_ATTR],
+    childList: true,
     subtree: true,
   })
 }

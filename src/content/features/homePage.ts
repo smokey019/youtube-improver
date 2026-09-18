@@ -6,9 +6,10 @@ const CSS_ID_SHORTS_SHELF = 'home-hide-shorts-shelf'
 const CSS_ID_MATCHED_SHELVES = 'home-hide-matched-shelves'
 const CSS_ID_VIDEOS_PER_ROW = 'home-videos-per-row'
 
-const GRID_CONTENTS_SELECTOR = 'ytd-rich-grid-renderer #contents.ytd-rich-grid-renderer'
+const GRID_CONTENTS_SELECTOR = 'ytd-rich-grid-renderer #contents'
 const SECTION_SELECTOR = 'ytd-rich-section-renderer'
-const SHELF_TITLE_SELECTOR = 'span#title-text, #title'
+// The title element is a plain div, not a span - confirmed via live-DOM dump (bare id selector matches either)
+const SHELF_TITLE_SELECTOR = '#title-text'
 const MATCHED_SHELF_CLASS = 'ytimprover-hidden-shelf'
 
 // is-shorts is a boolean attribute YouTube toggles on the shelf renderer itself, not its section wrapper
