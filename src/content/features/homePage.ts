@@ -6,8 +6,10 @@ const CSS_ID_SHORTS_SHELF = 'home-hide-shorts-shelf'
 const CSS_ID_MATCHED_SHELVES = 'home-hide-matched-shelves'
 const CSS_ID_VIDEOS_PER_ROW = 'home-videos-per-row'
 
-const GRID_CONTENTS_SELECTOR = 'ytd-rich-grid-renderer #contents'
-const SECTION_SELECTOR = 'ytd-rich-section-renderer'
+// YouTube's SPA keeps the previously-visited feed's ytd-browse mounted but hidden, so scope to the live one
+const BROWSE_SELECTOR = 'ytd-browse[page-subtype="home"]:not([hidden])'
+const GRID_CONTENTS_SELECTOR = `${BROWSE_SELECTOR} ytd-rich-grid-renderer #contents`
+const SECTION_SELECTOR = `${BROWSE_SELECTOR} ytd-rich-section-renderer`
 // The title element is a plain div, not a span - confirmed via live-DOM dump (bare id selector matches either)
 const SHELF_TITLE_SELECTOR = '#title-text'
 const MATCHED_SHELF_CLASS = 'ytimprover-hidden-shelf'
@@ -15,6 +17,16 @@ const MATCHED_SHELF_CLASS = 'ytimprover-hidden-shelf'
 // is-shorts is a boolean attribute YouTube toggles on the shelf renderer itself, not its section wrapper
 const SHORTS_SHELF_CSS = `${SECTION_SELECTOR}:has(ytd-rich-shelf-renderer[is-shorts]) { display: none !important; }`
 const MATCHED_SHELF_CSS = `.${MATCHED_SHELF_CLASS} { display: none !important; }`
+
+/**
+ * YouTube sizes each item as width: calc(100%/var(--ytd-rich-grid-items-per-row) - item-margin) inside a
+ * flex row, and sets that var inline per viewport - so !important is required to win. Overriding the var
+ * (rather than forcing display:grid) is what keeps full-width shelf rows from collapsing into one column.
+ */
+function videosPerRowCSS(columns: number): string {
+  const count = Math.max(1, Math.floor(columns))
+  return `${BROWSE_SELECTOR} ytd-rich-grid-renderer { --ytd-rich-grid-items-per-row: ${count} !important; }`
+}
 
 let shelfObserver: MutationObserver | null = null
 let activeNeedles: string[] = []
@@ -64,10 +76,7 @@ export function applyHomePage(settings: Settings['homePage']): void {
   setInjectedCSS(CSS_ID_SHORTS_SHELF, settings.hideShorts ? SHORTS_SHELF_CSS : '')
 
   if (settings.videosPerRow !== null) {
-    setInjectedCSS(
-      CSS_ID_VIDEOS_PER_ROW,
-      `${GRID_CONTENTS_SELECTOR} { grid-template-columns: repeat(${settings.videosPerRow}, 1fr) !important; }`
-    )
+    setInjectedCSS(CSS_ID_VIDEOS_PER_ROW, videosPerRowCSS(settings.videosPerRow))
   } else {
     clearInjectedCSS(CSS_ID_VIDEOS_PER_ROW)
   }

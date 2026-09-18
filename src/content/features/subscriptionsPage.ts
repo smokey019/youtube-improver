@@ -2,7 +2,8 @@ import type { Settings } from '../../types/settings'
 import { clearInjectedCSS, setInjectedCSS } from '../lib/dom'
 import { getYouTubePageType } from '../lib/youtubeNav'
 
-const SUBSCRIPTIONS_BROWSE_SELECTOR = 'ytd-browse[page-subtype="subscriptions"]'
+// YouTube's SPA keeps the previously-visited feed's ytd-browse mounted but hidden, so scope to the live one
+const SUBSCRIPTIONS_BROWSE_SELECTOR = 'ytd-browse[page-subtype="subscriptions"]:not([hidden])'
 const SHORTS_SHELF_CSS_ID = 'subscriptions-hide-shorts'
 const GRID_COLUMNS_CSS_ID = 'subscriptions-grid-columns'
 
@@ -40,15 +41,11 @@ function applyVideosPerRow(videosPerRow: number | null): void {
     return
   }
   const columns = Math.max(1, Math.floor(videosPerRow))
-  // --ytd-rich-grid-items-per-row is an undocumented internal var YouTube's own layout reads; the explicit grid-template-columns below is a fallback in case that stops being honored
+  // YouTube sizes each item as width: calc(100%/var(--ytd-rich-grid-items-per-row) - item-margin) inside a
+  // flex row, and sets that var inline per viewport - so !important is required to win. Overriding the var
+  // (rather than forcing display:grid) is what keeps full-width shelf rows from collapsing into one column.
   setInjectedCSS(
     GRID_COLUMNS_CSS_ID,
-    `${SUBSCRIPTIONS_BROWSE_SELECTOR} ytd-rich-grid-renderer {
-  --ytd-rich-grid-items-per-row: ${columns};
-}
-${SUBSCRIPTIONS_BROWSE_SELECTOR} ytd-rich-grid-renderer #contents {
-  display: grid !important;
-  grid-template-columns: repeat(${columns}, minmax(0, 1fr)) !important;
-}`
+    `${SUBSCRIPTIONS_BROWSE_SELECTOR} ytd-rich-grid-renderer { --ytd-rich-grid-items-per-row: ${columns} !important; }`
   )
 }
