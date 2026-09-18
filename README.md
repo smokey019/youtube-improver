@@ -48,9 +48,10 @@ Selectors were cross-checked twice: first against real saved YouTube pages (Home
 
 **Confirmed correct as-is** (live-DOM verified):
 - Home & Subscriptions: `ytd-browse[page-subtype="..."]`, the Shorts shelf marker `ytd-rich-shelf-renderer[is-shorts]`, and the grid contents container `ytd-rich-grid-renderer #contents` (the extra `.ytd-rich-grid-renderer` class qualifier we originally had was dropped — strongly implied by every child's style-scope class but not directly readable off a native `<div>`, so keeping the unverifiable half added risk for no benefit).
-- Player element ids `#shorts-player` and `#movie_player` — found verbatim in YouTube's own client bootstrap config.
+- Player element ids `#shorts-player` and `#movie_player` — found verbatim in YouTube's own client bootstrap config, and `#movie_player` additionally confirmed directly on a live watch page (it carries `ytp-*` state classes, e.g. `paused-mode`, `ytp-autohide`, alongside `html5-video-player`).
 - Shorts container `ytd-shorts`.
 - Subscriptions "Default view" (grid/list) toggle really doesn't exist — this was re-checked against the live hydrated DOM (not just the earlier static save) and confirmed absent again: zero `aria-pressed`/`aria-selected`/relevant `aria-label` anywhere on the page.
+- Regular watch pages, checked against a live non-Shorts video: `.ytp-autonav-toggle-button` (a `<div>`, with `aria-checked` set directly on it, exactly matching the code's lookup priority), `.ytp-size-button` (theater toggle), `ytd-comments#comments` (there's a second, unrelated `ytd-comments` with no id nested in a side engagement panel — the `#comments` qualifier correctly disambiguates), and `ytd-watch-next-secondary-results-renderer`. The one loose end: `ytd-watch-flexy`'s `theater` boolean attribute couldn't be positively confirmed since the capture happened with theater mode off (so its *absence* there is expected, not a red flag) — it's a long-standing, widely-used convention already, so not chasing it further for now.
 
 **Fixed real bugs found by the live-DOM check:**
 - Home's shelf-title selector assumed a `<span id="title-text">`; it's actually a `<div>`, so the old selector never matched anything — fixed to a bare `#title-text`.
@@ -60,10 +61,11 @@ Selectors were cross-checked twice: first against real saved YouTube pages (Home
 
 **Still best-effort / unverified:**
 - Shorts active-item detection no longer relies on a nonexistent attribute, but the underlying assumption (a single `ytd-reel-video-renderer` gets swapped per Short, rather than multiple coexisting with a flag) is based on one snapshot, not confirmed behavior while actively scrolling.
-- Autoplay blocking's `.ytp-autonav-toggle-button` and native player-control classes generally — these are plain (non-hyphenated) elements our DOM-dump tooling can't capture at all, so they remain unverified either way.
 - Autoplay blocking's timing heuristic — YouTube exposes no signal for "was this play autoplay or user-initiated," so it pauses a video that starts playing within ~1.5s of a fresh navigation. This is an approximation, not a guarantee.
 - Cinema mode backdrop z-index may need tuning against YouTube's own stacking contexts once tested visually.
 
 ## Roadmap (not yet built)
 
 From the Enhancer-for-YouTube feature audit this project started from: mini/pop-up player, volume booster overlay control, full custom theme system, custom CSS/JS injection, keyboard shortcut remapping, screenshot capture, video filters (brightness/contrast/etc.), control-bar customization, and settings import/export.
+
+Other `.ytp-*` player-control classes confirmed present on a live watch page that could seed future features: `ytp-play-button`/`ytp-large-play-button`, `ytp-pip-button` (Picture-in-Picture), `ytp-fullscreen-button`, `ytp-subtitles-button` (captions), `ytp-remote-button` (Cast), `ytp-overflow-button` (settings menu), `ytp-playlist-menu-button`. No distinct mute-button class was observed — volume/mute appears to go through `ytp-volume-icon`/`ytp-volume-panel` instead, worth checking directly before building a mute toggle.
