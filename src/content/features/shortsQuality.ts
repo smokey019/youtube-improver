@@ -1,21 +1,14 @@
 import type { QualityLevel, Settings } from '../../types/settings'
-import { waitForElement, setInjectedCSS, clearInjectedCSS } from '../lib/dom'
+import { setInjectedCSS, clearInjectedCSS } from '../lib/dom'
+import { sendPlayerCommand } from '../bridge/playerBridge'
 import { getYouTubePageType } from '../lib/youtubeNav'
 
 const HIDE_FEEDS_STYLE_ID = 'shorts-hide-feeds'
 const HIDE_FEEDS_CSS =
   'ytd-rich-shelf-renderer[is-shorts], ytd-reel-shelf-renderer { display: none !important; }'
 
-const SHORTS_PLAYER_SELECTOR = '#shorts-player'
-const SHORTS_CONTAINER_SELECTOR = 'ytd-shorts'
-
-interface ShortsPlayerElement extends HTMLElement {
-  setPlaybackQualityRange?: (min: QualityLevel, max: QualityLevel) => void
-}
-
-let qualityObserver: MutationObserver | null = null
-let desiredQuality: QualityLevel = 'auto'
-let observerSetupInFlight = false
+let lastAppliedKey: string | null = null
+let applyGeneration = 0
 
 export function applyShortsSettings(settings: Settings['shorts']): void {
   applyHideInFeeds(settings.hideInFeeds)
@@ -30,47 +23,35 @@ function applyHideInFeeds(hideInFeeds: boolean): void {
   }
 }
 
+/**
+ * Sends the desired quality for the current Short.
+ *
+ * This used to run a MutationObserver over `ytd-shorts` and re-call setPlaybackQualityRange on each
+ * DOM change. That call was a no-op, because the player API is invisible to this isolated world (see
+ * ../bridge/protocol.ts), and the trigger rested on an unverified assumption about how YouTube swaps
+ * reel renderers.
+ *
+ * The key includes the href on purpose. YouTube fires `yt-navigate-finish` for every scroll between
+ * Shorts, so keying per Short re-sends the command for each clip. Keying on the quality alone would
+ * send once and then early-return forever, and the MAIN-world script's `loadstart` re-apply cannot
+ * cover the gap by itself: a gapless transition can begin the next Short without a fresh loadstart.
+ *
+ * 'auto' is sent rather than skipped, so that switching the setting back to automatic clears the
+ * remembered value in the MAIN world. Skipping it would leave the last forced quality being
+ * re-applied to every later clip with no way to get YouTube's adaptive selection back.
+ */
 function applyDefaultQuality(defaultQuality: QualityLevel): void {
-  desiredQuality = defaultQuality
+  if (getYouTubePageType() !== 'shorts') return
 
-  if (getYouTubePageType() !== 'shorts' || defaultQuality === 'auto') {
-    disconnectQualityObserver()
-    return
-  }
+  const key = `${location.href}|${defaultQuality}`
+  if (key === lastAppliedKey) return
 
-  void setActivePlayerQuality(defaultQuality)
-  void ensureQualityObserver()
-}
+  const generation = ++applyGeneration
 
-function disconnectQualityObserver(): void {
-  qualityObserver?.disconnect()
-  qualityObserver = null
-}
-
-async function setActivePlayerQuality(quality: QualityLevel): Promise<void> {
-  if (quality === 'auto') return
-  const player = await waitForElement<ShortsPlayerElement>(SHORTS_PLAYER_SELECTOR)
-  if (quality !== desiredQuality) return // stale: a newer quality request superseded this one while we waited
-  if (typeof player?.setPlaybackQualityRange === 'function') {
-    player.setPlaybackQualityRange(quality, quality)
-  }
-}
-
-async function ensureQualityObserver(): Promise<void> {
-  if (qualityObserver || observerSetupInFlight) return
-  observerSetupInFlight = true
-  const container = await waitForElement<Element>(SHORTS_CONTAINER_SELECTOR)
-  observerSetupInFlight = false
-
-  if (!container || qualityObserver || getYouTubePageType() !== 'shorts' || desiredQuality === 'auto') return
-
-  // YouTube mounts a single ytd-reel-video-renderer at a time and swaps it out as the user scrolls between
-  // Shorts (confirmed via live-DOM dump - there's no is-active attribute to watch), so re-apply on any
-  // childList change under the container rather than trying to detect an "active" flag that doesn't exist
-  qualityObserver = new MutationObserver(() => void setActivePlayerQuality(desiredQuality))
-
-  qualityObserver.observe(container, {
-    childList: true,
-    subtree: true,
-  })
+  void (async () => {
+    const applied = await sendPlayerCommand({ op: 'setQuality', player: 'shorts', quality: defaultQuality })
+    if (generation !== applyGeneration) return
+    // Only commit on a confirmed write, so a Short that was still mounting stays retryable
+    if (applied) lastAppliedKey = key
+  })()
 }

@@ -1,13 +1,15 @@
 import type { Settings } from '../../types/settings'
-import { waitForElement } from '../lib/dom'
+import { sendPlayerCommand } from '../bridge/playerBridge'
 import { getYouTubePageType } from '../lib/youtubeNav'
 
-const PLAYER_SELECTOR = '#movie_player'
-
-interface YouTubePlayerElement extends HTMLElement {
-  setPlaybackQualityRange?: (min: string, max: string) => void
-  setPlaybackRate?: (rate: number) => void
-}
+/**
+ * Default quality and playback speed for regular watch pages.
+ *
+ * Both go through the MAIN-world bridge: setPlaybackQualityRange and setPlaybackRate live on the
+ * player element as page-world expandos, which this isolated content script cannot see at all. An
+ * earlier version called them directly here, guarded by a `typeof ... === 'function'` check that was
+ * always false, so this feature silently did nothing. See ../bridge/protocol.ts.
+ */
 
 let lastAppliedKey: string | null = null
 let applyGeneration = 0
@@ -21,35 +23,24 @@ export function applyVideoSettings(settings: Settings['video']): void {
 
   registerFullscreenListener()
 
-  // Keyed on href+quality+speed (not just href) so a settings-only change on the same video still re-applies
+  // Keyed on href+quality+speed (not just href) so a settings-only change on the same video re-applies
   const key = `${location.href}|${settings.defaultQuality}|${settings.defaultPlaybackSpeed}`
   if (key === lastAppliedKey) return
 
   const generation = ++applyGeneration
 
   void (async () => {
-    const player = await waitForElement<YouTubePlayerElement>(PLAYER_SELECTOR)
-    if (!player || generation !== applyGeneration || getYouTubePageType() !== 'watch') return
+    const [qualityApplied, rateApplied] = await Promise.all([
+      sendPlayerCommand({ op: 'setQuality', player: 'watch', quality: settings.defaultQuality }),
+      sendPlayerCommand({ op: 'setPlaybackRate', player: 'watch', rate: settings.defaultPlaybackSpeed }),
+    ])
 
-    // The player element can be inserted before YouTube attaches its imperative API, so wait for the media
-    const video = await waitForElement('video', { root: player })
-    if (!video || generation !== applyGeneration) return
-
-    // Key committed only after a real write, so an attempt that lands before the API is ready gets retried
-    // by the next navigation or settings event instead of being silently burned
-    if (typeof player.setPlaybackRate !== 'function') return
-
-    applyQuality(player, settings.defaultQuality)
-    player.setPlaybackRate(settings.defaultPlaybackSpeed)
-    lastAppliedKey = key
+    if (generation !== applyGeneration) return
+    // Committed only once the bridge confirms a player method actually ran. A command that expired
+    // waiting for a player stays eligible for the next navigation or settings change rather than
+    // being silently marked done - which is what made the original bug invisible.
+    if (qualityApplied && rateApplied) lastAppliedKey = key
   })()
-}
-
-function applyQuality(player: YouTubePlayerElement, quality: Settings['video']['defaultQuality']): void {
-  if (quality === 'auto') return
-  if (typeof player.setPlaybackQualityRange === 'function') {
-    player.setPlaybackQualityRange(quality, quality)
-  }
 }
 
 function registerFullscreenListener(): void {
@@ -57,11 +48,13 @@ function registerFullscreenListener(): void {
   fullscreenListenerRegistered = true
   document.addEventListener('fullscreenchange', () => {
     const settings = latestVideoSettings
-    if (!settings) return
-    const player = document.querySelector<YouTubePlayerElement>(PLAYER_SELECTOR)
-    if (!player) return
+    if (!settings || getYouTubePageType() !== 'watch') return
     const fullscreenQuality =
       settings.defaultQualityFullscreen === 'auto' ? settings.defaultQuality : settings.defaultQualityFullscreen
-    applyQuality(player, document.fullscreenElement ? fullscreenQuality : settings.defaultQuality)
+    void sendPlayerCommand({
+      op: 'setQuality',
+      player: 'watch',
+      quality: document.fullscreenElement ? fullscreenQuality : settings.defaultQuality,
+    })
   })
 }

@@ -3,6 +3,7 @@
   "name": "YouTube Improver",
   "version": "0.1.0",
   "description": "Customize YouTube's Home and Subscriptions pages, control default video/Shorts quality and playback speed, tame autoplay, and more.",
+  "minimum_chrome_version": "111",
   "permissions": ["storage"],
   "background": {
     "service_worker": "src/background/index.ts",
@@ -11,8 +12,16 @@
   "content_scripts": [
     {
       "matches": ["*://*.youtube.com/*"],
+      "js": ["src/content/main/index.ts"],
+      "run_at": "document_start",
+      "world": "MAIN",
+      "all_frames": false
+    },
+    {
+      "matches": ["*://*.youtube.com/*"],
       "js": ["src/content/index.ts"],
-      "run_at": "document_start"
+      "run_at": "document_start",
+      "all_frames": false
     }
   ],
   "options_ui": {

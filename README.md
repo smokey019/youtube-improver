@@ -38,13 +38,59 @@ Note: `bun run dev` starts Vite's dev server, and `vite-plugin-web-extension` wi
 
 ## Architecture
 
-- `manifest.json` — MV3 manifest (background service worker, content script, options page)
+- `manifest.json` — MV3 manifest (background service worker, **two** content scripts, options page)
+- `src/content/bridge/` — the ISOLATED↔MAIN world player bridge (`protocol.ts` for the wire format and security model, `playerBridge.ts` for the isolated-world client)
+- `src/content/main/index.ts` — the MAIN-world content script; the only code that runs inside YouTube's own JS context
 - `src/types/settings.ts` — the single source of truth for all settings: the `Settings` interface, defaults, and `chrome.storage.sync` read/write/subscribe helpers
 - `src/content/lib/` — shared content-script helpers (`dom.ts` for waiting-for-elements and CSS injection, `youtubeNav.ts` for detecting YouTube's SPA navigation and page type)
 - `src/content/features/*.ts` — one file per feature area (Home page, Subscriptions page, Shorts quality, video quality/speed, volume, autoplay control, hide comments/related, theater/cinema mode). Each exports a single `apply*(settings)` function called on every YouTube navigation and every settings change.
 - `src/content/index.ts` — wires all feature modules together
 - `src/background/index.ts` — sets defaults on install, opens the options page when the toolbar icon is clicked
 - `src/options/` — the settings UI (plain TypeScript + DOM APIs, no framework)
+
+## The isolated-world player API bug (and why there are two content scripts)
+
+For most of this project's life, **default video quality, default playback speed and default Shorts
+quality never worked at all** — silently. This is the single most important thing to understand about
+the architecture, because it dictates how those features are written.
+
+YouTube attaches its imperative player API (`setPlaybackQualityRange`, `setPlaybackRate`, `setVolume`,
+`getVolume`, `isMuted`, …) onto the `#movie_player` / `#shorts-player` **DOM element**, from the page's
+own JavaScript. Chrome gives every isolated world its own V8 wrapper per DOM node, so those properties
+do not exist for a content script running in the ISOLATED world. The element is shared between worlds;
+the properties set on it are not. The code guarded those calls with `typeof player.setPlaybackRate ===
+'function'`, which was always false, so it bailed out silently on every video forever.
+
+**Why this went unnoticed for so long, and the lesson:** every time these selectors were ground-truthed
+by pasting a snippet into DevTools, the API *was* visible — because the DevTools console evaluates in
+the **page** world by default. The verification habit that caught every other bug in this project was
+structurally incapable of catching this one. It was finally settled by a probe running inside the
+extension's own content script, which reported `getPlayerState: undefined` on both a watch page and a
+Short while the page-world console reported `function` for the same expression. If you are ever
+checking what the extension can see, check it from the extension.
+
+The fix is a second content script declared with `"world": "MAIN"` (a manifest key that shipped in
+Chrome 111, hence `minimum_chrome_version`). It shares YouTube's JS context, so it can see the API, and
+the isolated script drives it over a `CustomEvent` channel. Read the security model at the top of
+`src/content/bridge/protocol.ts` before adding an operation to it — the MAIN-world script has **no
+privilege boundary against the page**, so the op list is closed, every operand is re-validated on
+arrival, and nothing privileged (no `chrome.*`, no storage, no settings object) ever crosses into it.
+
+Two consequences worth knowing:
+
+- **Commands confirm before they commit.** Each feature commits its "already applied" key only once the
+  bridge reports that a player method actually ran. This is deliberate: the original bug was invisible
+  precisely because failure was indistinguishable from success.
+- **`setPlaybackQualityRange` writes YouTube's own `yt-player-quality` localStorage preference** with a
+  ~360-day TTL. That is YouTube's behaviour, not ours, but it means a forced quality persists in
+  YouTube's own settings and outlives the extension. Setting the option back to "auto" clears our
+  remembered value but does not rewrite YouTube's stored preference.
+
+Volume is deliberately **not** routed through the bridge. YouTube's `getVolume()` returns its internal
+volume while `<video>.volume` is that value scaled by a loudness-normalisation gain, so mixing the two
+scales makes volume drift — and YouTube persists its number to localStorage, where a corrupted value
+would survive uninstalling the extension. `volumeControl.ts` therefore stays on its existing,
+self-consistent `<video>.volume` path until that can be done properly.
 
 ## Known limitations (read before relying on these)
 
@@ -68,7 +114,7 @@ Selectors were cross-checked twice: first against real saved YouTube pages (Home
 - Both feeds' selectors are now scoped to `ytd-browse[page-subtype="..."]:not([hidden])`. There are always two `ytd-rich-grid-renderer` instances present (the other feed, kept alive at `0x0` by the SPA cache) and their document order varies by page, so unscoped lookups could bind to the invisible one.
 
 **Still best-effort / unverified:**
-- Shorts active-item detection no longer relies on a nonexistent attribute, but the underlying assumption (a single `ytd-reel-video-renderer` gets swapped per Short, rather than multiple coexisting with a flag) is based on one snapshot, not confirmed behavior while actively scrolling.
+- Shorts quality re-application. The MutationObserver that guessed at reel swaps is gone — it was calling an API this world cannot see anyway. Quality is now re-sent per Short off `yt-navigate-finish`, *and* the MAIN-world script re-applies on the media element's `loadstart`. The belt-and-braces pairing is deliberate: a review found that a **gapless** Shorts transition can begin the next clip without firing `loadstart` at all, so neither trigger alone is sufficient. Still worth watching across a long run of Shorts.
 - Autoplay blocking's timing heuristic — YouTube exposes no signal for "was this play autoplay or user-initiated," so it pauses a video that starts playing within ~1.5s of a fresh navigation. This is an approximation, not a guarantee.
 - Cinema mode backdrop z-index may need tuning against YouTube's own stacking contexts once tested visually.
 

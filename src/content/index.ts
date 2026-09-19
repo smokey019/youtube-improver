@@ -1,4 +1,5 @@
 import { getSettings, onSettingsChanged, type Settings } from '../types/settings'
+import { initPlayerBridge } from './bridge/playerBridge'
 import { onYouTubeNavigate } from './lib/youtubeNav'
 import { applyHomePage } from './features/homePage'
 import { applySubscriptionsPage } from './features/subscriptionsPage'
@@ -21,6 +22,9 @@ function applyAll(settings: Settings): void {
 }
 
 async function main(): Promise<void> {
+  // Before the awaited settings read, so we are listening when the MAIN-world script announces itself
+  initPlayerBridge()
+
   let settings = await getSettings()
   onYouTubeNavigate(() => applyAll(settings))
   onSettingsChanged((updated) => {
