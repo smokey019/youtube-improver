@@ -23,16 +23,25 @@ export function applyVideoSettings(settings: Settings['video']): void {
 
   registerFullscreenListener()
 
+  // Resolved per pass rather than only on the fullscreenchange edge: YouTube is an SPA, so the user
+  // can navigate to the next video without ever leaving fullscreen, and keying only off the edge
+  // would apply the windowed quality to a video that is still full screen.
+  const quality = document.fullscreenElement ? fullscreenQualityFor(settings) : settings.defaultQuality
+
   // Keyed on href+quality+speed (not just href) so a settings-only change on the same video re-applies
-  const key = `${location.href}|${settings.defaultQuality}|${settings.defaultPlaybackSpeed}`
+  const key = `${location.href}|${quality}|${settings.setDefaultPlaybackSpeed}|${settings.defaultPlaybackSpeed}`
   if (key === lastAppliedKey) return
 
   const generation = ++applyGeneration
 
   void (async () => {
     const [qualityApplied, rateApplied] = await Promise.all([
-      sendPlayerCommand({ op: 'setQuality', player: 'watch', quality: settings.defaultQuality }),
-      sendPlayerCommand({ op: 'setPlaybackRate', player: 'watch', rate: settings.defaultPlaybackSpeed }),
+      sendPlayerCommand({ op: 'setQuality', player: 'watch', quality }),
+      // Not sending is the point when the feature is off: it leaves the MAIN world with no remembered
+      // rate, so nothing is re-asserted on later loads and YouTube's own remembered speed survives.
+      settings.setDefaultPlaybackSpeed
+        ? sendPlayerCommand({ op: 'setPlaybackRate', player: 'watch', rate: settings.defaultPlaybackSpeed })
+        : Promise.resolve(true),
     ])
 
     if (generation !== applyGeneration) return
@@ -43,18 +52,21 @@ export function applyVideoSettings(settings: Settings['video']): void {
   })()
 }
 
+/** 'auto' here means "same as the windowed default", not "let YouTube choose". */
+function fullscreenQualityFor(settings: Settings['video']): Settings['video']['defaultQuality'] {
+  return settings.defaultQualityFullscreen === 'auto' ? settings.defaultQuality : settings.defaultQualityFullscreen
+}
+
 function registerFullscreenListener(): void {
   if (fullscreenListenerRegistered) return
   fullscreenListenerRegistered = true
   document.addEventListener('fullscreenchange', () => {
     const settings = latestVideoSettings
     if (!settings || getYouTubePageType() !== 'watch') return
-    const fullscreenQuality =
-      settings.defaultQualityFullscreen === 'auto' ? settings.defaultQuality : settings.defaultQualityFullscreen
     void sendPlayerCommand({
       op: 'setQuality',
       player: 'watch',
-      quality: document.fullscreenElement ? fullscreenQuality : settings.defaultQuality,
+      quality: document.fullscreenElement ? fullscreenQualityFor(settings) : settings.defaultQuality,
     })
   })
 }

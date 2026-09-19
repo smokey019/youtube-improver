@@ -82,6 +82,19 @@ body {
   opacity: 1;
 }
 
+/* A failed save has to be unmissable: it used to be indistinguishable from a successful one */
+.save-status.error {
+  color: #d93025;
+  font-weight: 600;
+}
+
+/* Controls are built from defaults and filled in once storage is read; a change in that window
+   would persist the defaults over the user's real settings */
+#app[aria-busy='true'] {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
 .reset-button {
   border: 1px solid var(--color-border);
   background: var(--color-surface);

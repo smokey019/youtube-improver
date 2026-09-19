@@ -93,9 +93,12 @@ function applyCommand(cmd: BridgeCommand): boolean {
     if (!player) return false
 
     if (cmd.op === 'setQuality') {
-      // 'auto' means "leave YouTube's own selection alone", so there is nothing to call
-      if (cmd.quality === 'auto') return true
       if (typeof player.setPlaybackQualityRange !== 'function') return false
+      // 'auto' is sent through rather than short-circuited. It is a real operand, and it is the only
+      // way to release a quality we previously forced: skipping it left the player pinned at the last
+      // forced level, and YouTube's own yt-player-quality preference holding it for every later video.
+      // Returning true without calling anything also reported success for a write that never happened,
+      // which is the exact failure shape this bridge exists to eliminate.
       player.setPlaybackQualityRange(cmd.quality, cmd.quality)
       return true
     }
@@ -251,12 +254,20 @@ function onBridgeMessage(event: Event): void {
     // Not ours: another installed copy of this extension is driving its own MAIN script
     if (message.token !== INSTANCE_TOKEN) return
 
-    const cmd = sanitize(message.cmd)
-    if (!cmd || typeof message.client !== 'string') return
-
-    remember(cmd)
+    if (typeof message.client !== 'string') return
     const id = message.id
     const client = message.client
+
+    const cmd = sanitize(message.cmd)
+    if (!cmd) {
+      // Answered rather than dropped. An unanswered command strands its caller for the full timeout,
+      // never commits, and is then re-sent on every navigation for the life of the tab - silently.
+      console.debug('[ytimprover] rejected malformed bridge command', message.cmd)
+      send({ dir: 'res', id, token: INSTANCE_TOKEN, client, applied: false, pending: false })
+      return
+    }
+
+    remember(cmd)
     let settled = false
     const applied = runCommand(cmd, (ok) => {
       // Second, authoritative answer once a retried command finally lands, gives up, or is superseded

@@ -2,7 +2,7 @@
 
 A Chrome (Manifest V3) extension that customizes YouTube's Home and Subscriptions pages, controls default video/Shorts playback quality, speed and volume (including mouse-wheel volume over the player), tames autoplay, and adds a few FrankerFaceZ/Enhancer-for-YouTube-style tweaks (hide comments/related videos, theater mode automation, a custom "Cinema mode" dimming backdrop).
 
-The content script runs at `document_start` so the wheel listener is registered before YouTube binds its own handlers (otherwise adjusting volume on Shorts would also skip to the next video). Anything that injects CSS or reads the DOM therefore has to tolerate an empty document on its first pass — `src/content/lib/dom.ts` re-homes injected `<style>` tags into `<head>` once it exists, and one-shot actions commit their "already applied" key only after a write actually lands, so a pass against a bare DOM doesn't burn the attempt.
+The content script runs at `document_start` so the wheel listener is registered before YouTube binds its own handlers (otherwise adjusting volume on Shorts would also skip to the next video). Anything that injects CSS or reads the DOM therefore has to tolerate an empty document on its first pass — `src/content/lib/dom.ts` re-homes injected `<style>` tags into `<head>` once it exists, and one-shot actions commit their "already applied" key only after a write actually lands, so a pass against a bare DOM doesn't burn the attempt. (That guarantee is real for the bridge-backed features; `volumeControl.ts` has the same shape but its write check cannot fail, so there it is decoration.)
 
 This is a v1 MVP scaffold — a working extension with a curated first slice of features, built to be extended with the rest of the Enhancer-for-YouTube-style feature set over time.
 
@@ -80,17 +80,24 @@ Two consequences worth knowing:
 
 - **Commands confirm before they commit.** Each feature commits its "already applied" key only once the
   bridge reports that a player method actually ran. This is deliberate: the original bug was invisible
-  precisely because failure was indistinguishable from success.
+  precisely because failure was indistinguishable from success. `'auto'` is sent through to
+  `setPlaybackQualityRange` as a real operand rather than short-circuited — treating it as a no-op both
+  reported success for a write that never happened *and* made a forced quality impossible to release.
 - **`setPlaybackQualityRange` writes YouTube's own `yt-player-quality` localStorage preference** with a
   ~360-day TTL. That is YouTube's behaviour, not ours, but it means a forced quality persists in
-  YouTube's own settings and outlives the extension. Setting the option back to "auto" clears our
-  remembered value but does not rewrite YouTube's stored preference.
+  YouTube's own settings and outlives the extension.
 
-Volume is deliberately **not** routed through the bridge. YouTube's `getVolume()` returns its internal
-volume while `<video>.volume` is that value scaled by a loudness-normalisation gain, so mixing the two
-scales makes volume drift — and YouTube persists its number to localStorage, where a corrupted value
-would survive uninstalling the extension. `volumeControl.ts` therefore stays on its existing,
-self-consistent `<video>.volume` path until that can be done properly.
+Volume is **not** routed through the bridge yet. YouTube's `getVolume()` returns its internal 0–100
+volume, while `<video>.volume` is that value scaled by a per-video loudness-normalisation gain, so
+mixing the two scales makes volume drift — and YouTube persists its own number to localStorage, where a
+corrupted value would survive uninstalling the extension.
+
+Do not read that as "the current path is fine". `<video>.volume` is **not** a channel this extension
+owns: YouTube writes it too, on playback-ready, on every audio-format change, and on every slider,
+keyboard, mute or unmute action. The extension shares one mutable property with the player's own volume
+controller and has no way to tell when the player has taken it back. `volumeControl.ts` also cannot
+unmute, because `player.isMuted()` is one of the page-world methods this world cannot see. Volume needs
+the same treatment quality just got; it has not had it.
 
 ## Known limitations (read before relying on these)
 
@@ -108,7 +115,7 @@ Selectors were cross-checked twice: first against real saved YouTube pages (Home
 **Fixed real bugs found by the live-DOM check:**
 - Home's shelf-title selector assumed a `<span id="title-text">`; it's actually a `<div>`, so the old selector never matched anything — fixed to a bare `#title-text`.
 - Shorts comments panel's `target-id` was guessed as `"shorts-engagement-panel-comments-section"`; the real value has no `shorts-` prefix — fixed to `"engagement-panel-comments-section"`.
-- Shorts quality's re-apply-on-scroll logic watched for an `is-active` attribute that doesn't exist anywhere in the live DOM (confirmed via a 12,790-node dump) — it was dead code that silently never fired. Replaced with a childList observer that re-applies quality whenever the mounted reel changes.
+- Shorts quality's re-apply-on-scroll logic watched for an `is-active` attribute that doesn't exist anywhere in the live DOM (confirmed via a 12,790-node dump) — dead code that silently never fired. It was briefly replaced with a childList observer, but the call that observer guarded was invisible to this world anyway (see the isolated-world section above), so both were deleted. Re-application now happens per-Short off `yt-navigate-finish` plus the MAIN-world script's `loadstart` handler.
 - Theater mode's `ytd-watch-flexy` lookup could have matched a stale, hidden instance — YouTube's SPA keeps a previous page's watch component mounted-but-hidden in the DOM for fast back-navigation (confirmed: a hidden `ytd-watch-flexy` was present even on a Shorts page). Selector now excludes `[hidden]`.
 - **"Videos per row" was broken on both feeds.** YouTube lays `#contents` out as a flex row and sizes each item with `width: calc(100%/var(--ytd-rich-grid-items-per-row) - var(--ytd-rich-grid-item-margin))` — i.e. a percentage of the item's *containing block*. The original approach set `grid-template-columns` on `#contents`, which did nothing on Home (a flex container ignores it) and actively broke Subscriptions (where it also forced `display: grid`): each item's containing block shrank to one grid cell, so items computed to `272/3 - 16 = 74.7px`, and full-width shelf rows (avatar strip, chip bar, Shorts shelf — all siblings of the video items inside the same `#contents`) collapsed into single 272px cells. Now it just overrides `--ytd-rich-grid-items-per-row` with `!important` (required, because YouTube sets that variable inline per viewport) and leaves `display` alone, so YouTube's own responsive sizing does the work and shelves keep spanning the full width.
 - Both feeds' selectors are now scoped to `ytd-browse[page-subtype="..."]:not([hidden])`. There are always two `ytd-rich-grid-renderer` instances present (the other feed, kept alive at `0x0` by the SPA cache) and their document order varies by page, so unscoped lookups could bind to the invisible one.
@@ -116,10 +123,10 @@ Selectors were cross-checked twice: first against real saved YouTube pages (Home
 **Still best-effort / unverified:**
 - Shorts quality re-application. The MutationObserver that guessed at reel swaps is gone — it was calling an API this world cannot see anyway. Quality is now re-sent per Short off `yt-navigate-finish`, *and* the MAIN-world script re-applies on the media element's `loadstart`. The belt-and-braces pairing is deliberate: a review found that a **gapless** Shorts transition can begin the next clip without firing `loadstart` at all, so neither trigger alone is sufficient. Still worth watching across a long run of Shorts.
 - Autoplay blocking's timing heuristic — YouTube exposes no signal for "was this play autoplay or user-initiated," so it pauses a video that starts playing within ~1.5s of a fresh navigation. This is an approximation, not a guarantee.
-- Cinema mode backdrop z-index may need tuning against YouTube's own stacking contexts once tested visually.
+- **Cinema mode has been rewritten and not yet verified visually.** The original was structurally broken, not mis-tuned: a single `position: fixed; inset: 0` overlay dims the player along with everything else, and no z-index fixes it — `.html5-video-player` is `position: relative; z-index: 0`, which seals the whole player into a level-0 stacking context, while `html` has an opaque `!important` background, so the overlay is either on top of the video or invisible. It now cuts a `clip-path` hole over the player's rect, resynced on scroll/resize/fullscreen via `requestAnimationFrame`. Check it actually frames the video rather than covering it before trusting it.
 
 ## Roadmap (not yet built)
 
 From the Enhancer-for-YouTube feature audit this project started from: mini/pop-up player, volume booster overlay control, full custom theme system, custom CSS/JS injection, keyboard shortcut remapping, screenshot capture, video filters (brightness/contrast/etc.), control-bar customization, and settings import/export.
 
-Other `.ytp-*` player-control classes confirmed present on a live watch page that could seed future features: `ytp-play-button`/`ytp-large-play-button`, `ytp-pip-button` (Picture-in-Picture), `ytp-fullscreen-button`, `ytp-subtitles-button` (captions), `ytp-remote-button` (Cast), `ytp-overflow-button` (settings menu), `ytp-playlist-menu-button`. No distinct mute-button class was observed — volume/mute appears to go through `ytp-volume-icon`/`ytp-volume-panel` instead, worth checking directly before building a mute toggle.
+Other `.ytp-*` player-control classes confirmed present on a live watch page that could seed future features: `ytp-play-button`/`ytp-large-play-button`, `ytp-pip-button` (Picture-in-Picture), `ytp-fullscreen-button`, `ytp-subtitles-button` (captions), `ytp-remote-button` (Cast), `ytp-overflow-button` (settings menu), `ytp-playlist-menu-button`. For volume: `ytp-mute-button`, `ytp-volume-panel` and `ytp-volume-slider` all exist in YouTube's shipping player stylesheets. (An earlier version of this file claimed no mute-button class existed and pointed at `ytp-volume-icon` instead — `ytp-mute-button` has five rules across the two stylesheets, and `ytp-volume-icon` has none. A "not observed" claim is the most expensive kind to get wrong, because it closes off the search.)

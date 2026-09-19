@@ -37,17 +37,39 @@ function fieldRow(id: string, labelText: string, control: HTMLElement, hint?: st
   return row
 }
 
+/**
+ * Guards against writing before the stored settings have been read.
+ *
+ * Every control is built from a clone of DEFAULT_SETTINGS and only filled in once getSettings()
+ * resolves. A change fired before that would persist the *defaults* plus that one edit, wiping
+ * everything the user had saved - and chrome.storage.sync is slow enough on a cold profile for a
+ * fast click to land in that window.
+ */
+let settingsLoaded = false
+
 async function persist(): Promise<void> {
-  await saveSettings(state)
-  showSaved()
+  if (!settingsLoaded) return
+  try {
+    await saveSettings(state)
+    showStatus('Saved', false)
+  } catch (error) {
+    // A rejected write used to be swallowed by the `void persist()` callers, so the only sign of
+    // failure was the "Saved" note not appearing - while the control kept showing the value that was
+    // never stored. chrome.storage.sync rejects on quota, which is reachable via the keyword list.
+    console.error('[ytimprover] failed to save settings', error)
+    showStatus('Could not save - see console', true)
+  }
 }
 
-function showSaved(): void {
+function showStatus(message: string, isError: boolean): void {
   const status = document.getElementById('save-status')
   if (!status) return
+  status.textContent = message
+  status.classList.toggle('error', isError)
   status.classList.add('visible')
   window.clearTimeout(saveStatusTimeout)
-  saveStatusTimeout = window.setTimeout(() => status.classList.remove('visible'), 1200)
+  // Errors stay put: they need reading, and clearing them would hide the only evidence of the failure
+  if (!isError) saveStatusTimeout = window.setTimeout(() => status.classList.remove('visible'), 1200)
 }
 
 function populate(): void {
@@ -229,9 +251,8 @@ function section(title: string, ...rows: HTMLElement[]): HTMLElement {
 
 async function resetToDefaults(): Promise<void> {
   state = structuredClone(DEFAULT_SETTINGS)
-  await saveSettings(state)
   populate()
-  showSaved()
+  await persist()
 }
 
 function buildHeader(): HTMLElement {
@@ -368,6 +389,15 @@ function buildApp(root: HTMLElement): void {
           state.video.defaultQualityFullscreen = v
         },
         'Auto keeps this the same as Default quality above.',
+      ),
+      checkboxField(
+        'video-set-default-speed',
+        'Force a default playback speed',
+        () => state.video.setDefaultPlaybackSpeed,
+        (checked) => {
+          state.video.setDefaultPlaybackSpeed = checked
+        },
+        'Off by default: YouTube remembers the speed you pick and restores it, and forcing a speed overrides that on every video.',
       ),
       playbackSpeedField('video-default-speed', 'Default playback speed'),
     ),
@@ -510,8 +540,19 @@ async function init(): Promise<void> {
   const root = document.getElementById('app')
   if (!root) return
   buildApp(root)
-  state = await getSettings()
+  // Inert until the real settings are in hand - see the note on settingsLoaded
+  root.setAttribute('aria-busy', 'true')
+  try {
+    state = await getSettings()
+  } catch (error) {
+    console.error('[ytimprover] failed to load settings', error)
+    showStatus('Could not load your settings - changes will not be saved', true)
+    return
+  } finally {
+    root.removeAttribute('aria-busy')
+  }
   populate()
+  settingsLoaded = true
 }
 
 void init()

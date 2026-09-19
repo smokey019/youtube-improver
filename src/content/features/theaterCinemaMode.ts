@@ -6,12 +6,21 @@ import { getYouTubePageType } from '../lib/youtubeNav'
 // back-navigation, and a bare querySelector could otherwise grab that stale instance instead of the live one
 const SELECTOR_WATCH_FLEXY = 'ytd-watch-flexy:not([hidden])'
 const SELECTOR_THEATER_BUTTON = '.ytp-size-button'
+const SELECTOR_PLAYER = '#movie_player'
 const BACKDROP_ID = 'ytimprover-cinema-backdrop'
-// Sits above YT's page background but below masthead (~2065) and player chrome; tune after live-page verification.
+/**
+ * Above YouTube's page content. The player is deliberately NOT excluded by z-index, because it cannot
+ * be: `.html5-video-player` is `position: relative; z-index: 0`, which makes it a stacking context, so
+ * everything inside it is sealed below any root-level positive z-index. Going under instead does not
+ * work either, since the page background is opaque. The player is excluded with a clip-path hole.
+ */
 const BACKDROP_Z_INDEX = 2000
 
 let lastAutoTheaterAppliedFor = ''
 let theaterGeneration = 0
+let latestTheaterSettings: Settings['theater'] | null = null
+let backdropSyncBound = false
+let backdropSyncFrame = 0
 
 function hexToRgba(hex: string, opacityPercent: number): string {
   const normalized = hex.replace('#', '')
@@ -52,6 +61,51 @@ function removeBackdrop(): void {
   getBackdrop()?.remove()
 }
 
+/**
+ * Dims everything except the player, by punching a hole in the backdrop over the player's rect.
+ *
+ * The outer ring is wound clockwise and the player rect counter-clockwise; under the default nonzero
+ * fill rule that leaves the player rect unpainted. Without this the feature did the opposite of its
+ * description, covering the video in 85% black while leaving it clickable underneath.
+ */
+function paintBackdrop(settings: Settings['theater']): void {
+  const backdrop = getBackdrop()
+  if (!backdrop) return
+  backdrop.style.backgroundColor = hexToRgba(settings.cinemaModeColor, settings.cinemaModeOpacity)
+
+  const rect = document.querySelector<HTMLElement>(SELECTOR_PLAYER)?.getBoundingClientRect()
+  if (!rect || rect.width < 1 || rect.height < 1) {
+    backdrop.style.clipPath = 'none'
+    return
+  }
+  backdrop.style.clipPath =
+    `polygon(0 0, 100% 0, 100% 100%, 0 100%, 0 0, ` +
+    `${rect.left}px ${rect.top}px, ${rect.left}px ${rect.bottom}px, ` +
+    `${rect.right}px ${rect.bottom}px, ${rect.right}px ${rect.top}px, ` +
+    `${rect.left}px ${rect.top}px, 0 0)`
+}
+
+/**
+ * Keeps the hole aligned. The backdrop is fixed and the player scrolls, so scrolling matters as much
+ * as resizing. Reads are coalesced into one animation frame: getBoundingClientRect forces layout, and
+ * doing that synchronously on every scroll event would make scrolling janky.
+ */
+function ensureBackdropSync(): void {
+  if (backdropSyncBound) return
+  backdropSyncBound = true
+  const resync = (): void => {
+    if (backdropSyncFrame) return
+    backdropSyncFrame = requestAnimationFrame(() => {
+      backdropSyncFrame = 0
+      const settings = latestTheaterSettings
+      if (settings?.cinemaMode && getBackdrop()) paintBackdrop(settings)
+    })
+  }
+  window.addEventListener('scroll', resync, { passive: true })
+  window.addEventListener('resize', resync, { passive: true })
+  document.addEventListener('fullscreenchange', resync)
+}
+
 function applyAutoTheaterModeOnce(): void {
   if (lastAutoTheaterAppliedFor === location.href) return
   const forHref = location.href
@@ -82,6 +136,8 @@ function applyAutoTheaterModeOnce(): void {
 }
 
 export function applyTheaterCinemaMode(settings: Settings['theater']): void {
+  latestTheaterSettings = settings
+
   if (getYouTubePageType() !== 'watch') {
     removeBackdrop()
     return
@@ -92,9 +148,9 @@ export function applyTheaterCinemaMode(settings: Settings['theater']): void {
   }
 
   if (settings.cinemaMode) {
-    const backdrop = ensureBackdrop()
-    if (backdrop) {
-      backdrop.style.backgroundColor = hexToRgba(settings.cinemaModeColor, settings.cinemaModeOpacity)
+    if (ensureBackdrop()) {
+      paintBackdrop(settings)
+      ensureBackdropSync()
     }
   } else {
     removeBackdrop()

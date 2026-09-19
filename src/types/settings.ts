@@ -51,6 +51,15 @@ export interface Settings {
     defaultQuality: QualityLevel
     /** 'auto' means "same as defaultQuality" */
     defaultQualityFullscreen: QualityLevel
+    /**
+     * false = leave YouTube's own remembered playback rate alone.
+     *
+     * Speed needs this flag because, unlike quality, it has no neutral value: 1x is a real speed a
+     * user might want forced, so it cannot double as "don't touch". Without the flag the shipped
+     * default of 1 silently overwrote the rate YouTube restores from its own preference, which looked
+     * to the user like YouTube's remember-my-speed feature had broken.
+     */
+    setDefaultPlaybackSpeed: boolean
     defaultPlaybackSpeed: PlaybackSpeed
   }
   volume: {
@@ -85,7 +94,12 @@ export const DEFAULT_SETTINGS: Settings = {
   homePage: { enabled: false, hideShorts: false, hidePlayables: true, hideShelvesContaining: [], videosPerRow: null },
   subscriptionsPage: { enabled: false, hideShorts: false, videosPerRow: null },
   shorts: { hideInFeeds: false, defaultQuality: 'auto' },
-  video: { defaultQuality: 'auto', defaultQualityFullscreen: 'auto', defaultPlaybackSpeed: 1 },
+  video: {
+    defaultQuality: 'auto',
+    defaultQualityFullscreen: 'auto',
+    setDefaultPlaybackSpeed: false,
+    defaultPlaybackSpeed: 1,
+  },
   volume: { setDefaultVolume: true, defaultVolume: 15, wheelVolumeEnabled: true, wheelVolumeStep: 5 },
   autoplay: {
     disableAutoplay: false,
