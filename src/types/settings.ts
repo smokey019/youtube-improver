@@ -44,7 +44,10 @@ export interface Settings {
     videosPerRow: number | null
   }
   shorts: {
+    /** Shorts shelves in browse feeds (Home, Subscriptions, channels) and search results. */
     hideInFeeds: boolean
+    /** The Shorts shelf in a watch page's right-hand related column, controlled separately. */
+    hideInWatchSidebar: boolean
     defaultQuality: QualityLevel
   }
   video: {
@@ -93,7 +96,7 @@ export interface Settings {
 export const DEFAULT_SETTINGS: Settings = {
   homePage: { enabled: false, hideShorts: false, hidePlayables: true, hideShelvesContaining: [], videosPerRow: null },
   subscriptionsPage: { enabled: false, hideShorts: false, videosPerRow: null },
-  shorts: { hideInFeeds: false, defaultQuality: 'auto' },
+  shorts: { hideInFeeds: false, hideInWatchSidebar: false, defaultQuality: 'auto' },
   video: {
     defaultQuality: 'auto',
     defaultQualityFullscreen: 'auto',

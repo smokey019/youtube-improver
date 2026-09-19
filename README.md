@@ -99,6 +99,27 @@ controller and has no way to tell when the player has taken it back. `volumeCont
 unmute, because `player.isMuted()` is one of the page-world methods this world cannot see. Volume needs
 the same treatment quality just got; it has not had it.
 
+## Deliberate defaults
+
+Almost everything ships **off**, so a fresh install leaves YouTube alone. Two decisions are worth
+stating explicitly, because an audit flagged both as surprising:
+
+- **Default volume is on, at 15%.** This is intentional. A fresh install caps volume at 15% on the
+  first video, and from then on whatever the user sets in the options page applies. It is currently the
+  only default that changes YouTube's behaviour out of the box.
+- **Default playback speed is off.** Speed cannot use a sentinel the way quality uses `'auto'`, because
+  1× is a real speed someone may want forced. Without an explicit on/off flag the shipped default
+  silently overrode the rate YouTube restores from its own preference, which reads as "YouTube stopped
+  remembering my speed". Forcing a speed now requires ticking the box.
+
+Hiding Shorts is split across three independent settings, which overlap on purpose:
+`homePage.hideShorts` and `subscriptionsPage.hideShorts` are gated behind their page's master toggle,
+while `shorts.hideInFeeds` is ungated and covers browse feeds and search everywhere. A fourth,
+`shorts.hideInWatchSidebar`, controls the Shorts row in a watch page's suggestions column separately —
+it used to be swept up by `hideInFeeds`, which is a reasonable thing to want but not something a
+switch labelled "in feeds" should decide on the user's behalf. If Shorts stay hidden after you untick a
+page's toggle, the ungated setting is why.
+
 ## Known limitations (read before relying on these)
 
 YouTube's internal DOM (custom element names, class names, button labels) changes periodically. Selectors are centralized as named constants near the top of each feature file specifically so they're easy to find and patch.

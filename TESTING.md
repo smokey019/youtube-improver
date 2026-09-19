@@ -12,6 +12,19 @@ and close every open YouTube tab. Content scripts only reload on a fresh page lo
 console evaluates in the *page* world and will happily confirm capabilities the extension does not have
 — that is precisely the habit that hid the original bug. Every check here is visual for that reason.
 
+**Two settled product decisions**, so these are no longer open questions when you hit them below:
+
+- The 15% default volume **is** meant to apply out of the box, with the user's own value taking over
+  once they change it. Item 5 is testing that it works, not whether it should exist.
+- "Hide Shorts in feeds" is **not** meant to touch the watch-page sidebar. That is now a separate
+  setting, "Hide Shorts next to the video you are watching". Item 9 should confirm the two are
+  genuinely independent: ticking only the feeds one must leave the sidebar row alone.
+
+**Not yet verified against a real capture:** that the Shorts shelf in a watch page's suggestions column
+is a `ytd-reel-shelf-renderer`. The container around it is live-DOM confirmed; the shelf inside it is
+the standard shape but was not captured directly. If item 9's sidebar check fails, that selector is the
+first thing to look at.
+
 ## 1. Default video quality — does the forced quality land, and can it be released?
 
 **Priority:** high

@@ -3,24 +3,44 @@ import { setInjectedCSS, clearInjectedCSS } from '../lib/dom'
 import { sendPlayerCommand } from '../bridge/playerBridge'
 import { getYouTubePageType } from '../lib/youtubeNav'
 
+/**
+ * The two places Shorts shelves appear are hidden by separate settings.
+ *
+ * These used to be one unscoped rule, so hiding Shorts "in feeds" also stripped the Shorts row from a
+ * watch page's related column - a reasonable thing to want, but not something a switch labelled
+ * "in feeds" should decide for you.
+ *
+ * `ytd-rich-shelf-renderer[is-shorts]` is the grid-feed shape (Home, Subscriptions) and
+ * `ytd-reel-shelf-renderer` is the list shape (search results, the watch sidebar). Both are matched in
+ * the feed scope because which one YouTube uses varies by surface.
+ */
+const SHORTS_SHELVES = 'ytd-rich-shelf-renderer[is-shorts], ytd-reel-shelf-renderer'
+
 const HIDE_FEEDS_STYLE_ID = 'shorts-hide-feeds'
-const HIDE_FEEDS_CSS =
-  'ytd-rich-shelf-renderer[is-shorts], ytd-reel-shelf-renderer { display: none !important; }'
+const FEED_SCOPES = ['ytd-browse', 'ytd-search']
+const HIDE_FEEDS_CSS = `${FEED_SCOPES.flatMap((scope) =>
+  SHORTS_SHELVES.split(', ').map((shelf) => `${scope} ${shelf}`)
+).join(',\n')} { display: none !important; }`
+
+const HIDE_SIDEBAR_STYLE_ID = 'shorts-hide-watch-sidebar'
+// ytd-watch-next-secondary-results-renderer is live-DOM confirmed; that a Shorts shelf inside it is a
+// ytd-reel-shelf-renderer is the standard shape but has not been captured directly - verify visually.
+const HIDE_SIDEBAR_CSS = `ytd-watch-next-secondary-results-renderer :is(${SHORTS_SHELVES}) {
+  display: none !important;
+}`
 
 let lastAppliedKey: string | null = null
 let applyGeneration = 0
 
 export function applyShortsSettings(settings: Settings['shorts']): void {
-  applyHideInFeeds(settings.hideInFeeds)
+  toggleCSS(HIDE_FEEDS_STYLE_ID, HIDE_FEEDS_CSS, settings.hideInFeeds)
+  toggleCSS(HIDE_SIDEBAR_STYLE_ID, HIDE_SIDEBAR_CSS, settings.hideInWatchSidebar)
   applyDefaultQuality(settings.defaultQuality)
 }
 
-function applyHideInFeeds(hideInFeeds: boolean): void {
-  if (hideInFeeds) {
-    setInjectedCSS(HIDE_FEEDS_STYLE_ID, HIDE_FEEDS_CSS)
-  } else {
-    clearInjectedCSS(HIDE_FEEDS_STYLE_ID)
-  }
+function toggleCSS(id: string, css: string, enabled: boolean): void {
+  if (enabled) setInjectedCSS(id, css)
+  else clearInjectedCSS(id)
 }
 
 /**

@@ -358,6 +358,16 @@ function buildApp(root: HTMLElement): void {
         (v) => {
           state.shorts.hideInFeeds = v
         },
+        'Shorts shelves on Home, Subscriptions, channel pages and search. Works on its own — it does not need the Home or Subscriptions toggles above, and it will keep hiding them even when those are off.',
+      ),
+      checkboxField(
+        'shorts-hide-in-watch-sidebar',
+        'Hide Shorts next to the video you are watching',
+        () => state.shorts.hideInWatchSidebar,
+        (v) => {
+          state.shorts.hideInWatchSidebar = v
+        },
+        'The Shorts row in the suggestions column on a watch page.',
       ),
       selectField<QualityLevel>(
         'shorts-default-quality',
