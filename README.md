@@ -2,7 +2,7 @@
 
 A Chrome (Manifest V3) extension that customizes YouTube's Home and Subscriptions pages, controls default video/Shorts playback quality, speed and volume (including mouse-wheel volume over the player), tames autoplay, and adds a few FrankerFaceZ/Enhancer-for-YouTube-style tweaks (hide comments/related videos, theater mode automation, a custom "Cinema mode" dimming backdrop).
 
-The content script runs at `document_start` so the wheel listener is registered before YouTube binds its own handlers (otherwise adjusting volume on Shorts would also skip to the next video). Anything that injects CSS or reads the DOM therefore has to tolerate an empty document on its first pass — `src/content/lib/dom.ts` re-homes injected `<style>` tags into `<head>` once it exists, and one-shot actions commit their "already applied" key only after a write actually lands, so a pass against a bare DOM doesn't burn the attempt. (That guarantee is real for the bridge-backed features; `volumeControl.ts` has the same shape but its write check cannot fail, so there it is decoration.)
+The content script runs at `document_start` so the wheel listener is registered before YouTube binds its own handlers (otherwise adjusting volume on Shorts would also skip to the next video). Anything that injects CSS or reads the DOM therefore has to tolerate an empty document on its first pass — `src/content/lib/dom.ts` re-homes injected `<style>` tags into `<head>` once it exists, and one-shot actions commit their "already applied" key only after a write actually lands, so a pass against a bare DOM doesn't burn the attempt. (That guarantee holds for every bridge-backed feature, volume included: `volumeControl.ts` commits only once the bridge confirms a player method ran.)
 
 This is a v1 MVP scaffold — a working extension with a curated first slice of features, built to be extended with the rest of the Enhancer-for-YouTube-style feature set over time.
 
@@ -87,17 +87,19 @@ Two consequences worth knowing:
   ~360-day TTL. That is YouTube's behaviour, not ours, but it means a forced quality persists in
   YouTube's own settings and outlives the extension.
 
-Volume is **not** routed through the bridge yet. YouTube's `getVolume()` returns its internal 0–100
-volume, while `<video>.volume` is that value scaled by a per-video loudness-normalisation gain, so
-mixing the two scales makes volume drift — and YouTube persists its own number to localStorage, where a
-corrupted value would survive uninstalling the extension.
+Volume goes through the bridge too, via two ops: `setVolume` (absolute, for the default-volume feature)
+and `adjustVolume` (relative, for the mouse wheel; the read-modify-write happens in one synchronous step
+in MAIN so fast scrolling cannot lose notches, and it can unmute when turning up). Both use YouTube's own
+0–100 scale. This matters because `<video>.volume` is **not** a channel this extension owns: YouTube
+writes it too, and its own number is scaled by a per-video loudness-normalisation gain. An earlier
+version wrote `<video>.volume` directly, so YouTube's heartbeat later stamped its remembered value back
+over the user's. Setting volume through the player API updates the model YouTube re-asserts from, and the
+bridge hands the player's own reading back so the wheel's on-screen indicator matches YouTube's slider.
 
-Do not read that as "the current path is fine". `<video>.volume` is **not** a channel this extension
-owns: YouTube writes it too, on playback-ready, on every audio-format change, and on every slider,
-keyboard, mute or unmute action. The extension shares one mutable property with the player's own volume
-controller and has no way to tell when the player has taken it back. `volumeControl.ts` also cannot
-unmute, because `player.isMuted()` is one of the page-world methods this world cannot see. Volume needs
-the same treatment quality just got; it has not had it.
+A **temporary volume diagnostic** (`src/content/diag/` plus `src/content/main/volumeDiag.ts`) is still in
+the tree to chase an intermittent collapse to a low volume. It is on by default (opt out with
+`localStorage['ytimprover-diag'] = '0'`), deliberately does not share the bridge channel, and should be
+deleted, along with its init calls, once that question is settled.
 
 ## Deliberate defaults
 
