@@ -1,6 +1,7 @@
 import type { Settings } from '../../types/settings'
 import { clearInjectedCSS, setInjectedCSS } from '../lib/dom'
 import { getYouTubePageType } from '../lib/youtubeNav'
+import { wrappingMetadataCSS } from '../lib/gridMetadata'
 
 // YouTube's SPA keeps the previously-visited feed's ytd-browse mounted but hidden, so scope to the live one
 const SUBSCRIPTIONS_BROWSE_SELECTOR = 'ytd-browse[page-subtype="subscriptions"]:not([hidden])'
@@ -46,6 +47,7 @@ function applyVideosPerRow(videosPerRow: number | null): void {
   // (rather than forcing display:grid) is what keeps full-width shelf rows from collapsing into one column.
   setInjectedCSS(
     GRID_COLUMNS_CSS_ID,
-    `${SUBSCRIPTIONS_BROWSE_SELECTOR} ytd-rich-grid-renderer { --ytd-rich-grid-items-per-row: ${columns} !important; }`
+    `${SUBSCRIPTIONS_BROWSE_SELECTOR} ytd-rich-grid-renderer { --ytd-rich-grid-items-per-row: ${columns} !important; }
+${wrappingMetadataCSS(SUBSCRIPTIONS_BROWSE_SELECTOR)}`
   )
 }

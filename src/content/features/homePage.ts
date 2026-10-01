@@ -1,6 +1,7 @@
 import type { Settings } from '../../types/settings'
 import { waitForElement, setInjectedCSS, clearInjectedCSS } from '../lib/dom'
 import { getYouTubePageType } from '../lib/youtubeNav'
+import { wrappingMetadataCSS } from '../lib/gridMetadata'
 
 const CSS_ID_SHORTS_SHELF = 'home-hide-shorts-shelf'
 const CSS_ID_PLAYABLES_SHELF = 'home-hide-playables-shelf'
@@ -34,7 +35,8 @@ ${SECTION_SELECTOR}:has(ytd-mini-game-card-view-model) {
  */
 function videosPerRowCSS(columns: number): string {
   const count = Math.max(1, Math.floor(columns))
-  return `${BROWSE_SELECTOR} ytd-rich-grid-renderer { --ytd-rich-grid-items-per-row: ${count} !important; }`
+  return `${BROWSE_SELECTOR} ytd-rich-grid-renderer { --ytd-rich-grid-items-per-row: ${count} !important; }
+${wrappingMetadataCSS(BROWSE_SELECTOR)}`
 }
 
 let shelfObserver: MutationObserver | null = null
