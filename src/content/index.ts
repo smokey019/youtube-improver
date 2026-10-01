@@ -1,6 +1,5 @@
 import { getSettings, onSettingsChanged, type Settings } from '../types/settings'
 import { initPlayerBridge } from './bridge/playerBridge'
-import { initVolumeDiagIsolated } from './diag/volumeDiag'
 import { onYouTubeNavigate } from './lib/youtubeNav'
 import { applyHomePage } from './features/homePage'
 import { applySubscriptionsPage } from './features/subscriptionsPage'
@@ -25,10 +24,6 @@ function applyAll(settings: Settings): void {
 async function main(): Promise<void> {
   // Before the awaited settings read, so we are listening when the MAIN-world script announces itself
   initPlayerBridge()
-
-  // Before applyAll can run, so the probe catches the extension's very first volume write.
-  // Inert unless localStorage['ytimprover-diag'] === '1'. Temporary - see ./diag/channel.ts.
-  initVolumeDiagIsolated()
 
   let settings = await getSettings()
   onYouTubeNavigate(() => applyAll(settings))

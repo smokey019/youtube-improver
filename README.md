@@ -96,11 +96,6 @@ version wrote `<video>.volume` directly, so YouTube's heartbeat later stamped it
 over the user's. Setting volume through the player API updates the model YouTube re-asserts from, and the
 bridge hands the player's own reading back so the wheel's on-screen indicator matches YouTube's slider.
 
-A **temporary volume diagnostic** (`src/content/diag/` plus `src/content/main/volumeDiag.ts`) is still in
-the tree to chase an intermittent collapse to a low volume. It is on by default (opt out with
-`localStorage['ytimprover-diag'] = '0'`), deliberately does not share the bridge channel, and should be
-deleted, along with its init calls, once that question is settled.
-
 ## Deliberate defaults
 
 Almost everything ships **off**, so a fresh install leaves YouTube alone. Two decisions are worth

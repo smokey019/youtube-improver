@@ -29,7 +29,6 @@ import {
   type PlayerKind,
 } from '../bridge/protocol'
 import type { QualityLevel } from '../../types/settings'
-import { initVolumeDiag } from './volumeDiag'
 
 interface PlayerApi extends HTMLElement {
   setPlaybackQualityRange?: (min: QualityLevel, max: QualityLevel) => void
@@ -376,10 +375,6 @@ function onBridgeMessage(event: Event): void {
 }
 
 try {
-  // First, so its `volume` setter patch is installed before YouTube's player bundle loads and starts
-  // writing. Inert unless localStorage['ytimprover-diag'] === '1'. Temporary - see ../diag/channel.ts.
-  initVolumeDiag()
-
   document.addEventListener(BRIDGE_CHANNEL, onBridgeMessage)
   document.addEventListener('loadstart', onMediaEvent, true)
   // Announce unconditionally: if the ISOLATED script is not listening yet it will send `hello` and we

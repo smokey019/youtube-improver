@@ -17,4 +17,4 @@ Chrome MV3 extension (TypeScript, Vite, Bun). See README.md for features and the
 - Player methods (`setVolume`, `setPlaybackRate`, …) are invisible to the ISOLATED content script. Never feature-detect them there; send a bridge command. Verify from inside the extension, not the DevTools console (page world).
 - YouTube's CSS classes are camelCase (`ytContentMetadataViewModelMetadataRow`), not the old kebab-case. Selectors that worked against older DOM dumps may match nothing.
 - Feed selectors must be scoped to `ytd-browse[page-subtype="..."]:not([hidden])`; the SPA keeps a hidden second copy mounted.
-- Temporary volume diagnostic lives in `src/content/diag/` and `src/content/main/volumeDiag.ts`. It is on by default and meant to be deleted once the volume bug is settled.
+- Diagnostic probes must be inert unless invoked and must not share the bridge channel or state with the feature they measure. A probe that did both once caused the bug it was meant to find.
