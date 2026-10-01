@@ -18,7 +18,9 @@
 import {
   BRIDGE_CHANNEL,
   MAX_RATE,
+  MAX_VOLUME,
   MIN_RATE,
+  MIN_VOLUME,
   decode,
   isPlayerKind,
   isQualityLevel,
@@ -27,10 +29,15 @@ import {
   type PlayerKind,
 } from '../bridge/protocol'
 import type { QualityLevel } from '../../types/settings'
+import { initVolumeDiag } from './volumeDiag'
 
 interface PlayerApi extends HTMLElement {
   setPlaybackQualityRange?: (min: QualityLevel, max: QualityLevel) => void
   setPlaybackRate?: (rate: number) => void
+  setVolume?: (volume: number) => void
+  getVolume?: () => number
+  isMuted?: () => boolean
+  unMute?: () => void
 }
 
 const RETRY_INTERVAL_MS = 250
@@ -56,7 +63,7 @@ interface PendingRetry {
   attempts: number
   timer: number
   /** Kept so a superseded command still gets an authoritative answer instead of stranding its caller. */
-  onSettled?: (applied: boolean) => void
+  onSettled?: (applied: boolean, value: number | null) => void
 }
 const retries = new Map<string, PendingRetry>()
 
@@ -73,8 +80,13 @@ function selectorFor(kind: PlayerKind): string {
  */
 function resolvePlayer(kind: PlayerKind): PlayerApi | null {
   const candidates = Array.from(document.querySelectorAll<PlayerApi>(selectorFor(kind)))
+  // setVolume is in the list because the volume ops do not need the other two, and a player that
+  // exposed only setVolume would otherwise be filtered out and reported as "no player".
   const usable = candidates.filter(
-    (el) => typeof el.setPlaybackRate === 'function' || typeof el.setPlaybackQualityRange === 'function'
+    (el) =>
+      typeof el.setPlaybackRate === 'function' ||
+      typeof el.setPlaybackQualityRange === 'function' ||
+      typeof el.setVolume === 'function'
   )
   return usable.find((el) => Boolean(el.querySelector('video')?.currentSrc)) ?? usable[0] ?? null
 }
@@ -87,10 +99,52 @@ function resolvePlayer(kind: PlayerKind): PlayerApi | null {
  * window 'error' handler (which feeds their player error telemetry) and leave the caller's retry
  * bookkeeping wedged with no response ever sent.
  */
-function applyCommand(cmd: BridgeCommand): boolean {
+function applyCommand(cmd: BridgeCommand, out: { value: number | null }): boolean {
   try {
     const player = resolvePlayer(cmd.player)
     if (!player) return false
+
+    /**
+     * Volume goes through the player's own API, never through video.volume.
+     *
+     * This is not a style preference, it is the whole point. Writing the media element directly does
+     * change the audio, but YouTube's player keeps its own volume model and re-asserts it onto the
+     * element on its periodic heartbeat - observed in the wild as `heartbeat.js onSuccess` ->
+     * `setVolume` -> `video.volume = 0.05`, stamping YouTube's remembered value back over the user's
+     * roughly once a minute. Going through setVolume updates that model, so the heartbeat re-asserts
+     * the value we set instead of fighting it, and YouTube persists it for the next video for free.
+     */
+    if (cmd.op === 'setVolume' || cmd.op === 'adjustVolume') {
+      if (typeof player.setVolume !== 'function') return false
+
+      let target: number
+      if (cmd.op === 'setVolume') {
+        target = cmd.volume
+      } else {
+        // Read-modify-write in one synchronous step. getVolume is the player's own number, which is
+        // the only value the wheel can safely add to - the media element's is on a different scale
+        // and is whatever the last heartbeat happened to leave behind.
+        if (typeof player.getVolume !== 'function') return false
+        const current = player.getVolume()
+        if (typeof current !== 'number' || !Number.isFinite(current)) return false
+        target = current + cmd.delta
+      }
+
+      const clamped = Math.min(MAX_VOLUME, Math.max(MIN_VOLUME, Math.round(target)))
+      player.setVolume(clamped)
+
+      // Only the wheel path may unmute, and only when turning up. Unmuting from the default-volume
+      // path would override a mute the user deliberately set, on every single video load.
+      if (cmd.op === 'adjustVolume' && cmd.unmute && clamped > 0 && player.isMuted?.() === true) {
+        player.unMute?.()
+      }
+
+      // Read back rather than reporting `clamped`: the indicator should show what the player ended up
+      // at, not what we asked for, so a rejected or adjusted write cannot show a number that is a lie.
+      const readBack = typeof player.getVolume === 'function' ? player.getVolume() : clamped
+      out.value = typeof readBack === 'number' && Number.isFinite(readBack) ? readBack : clamped
+      return true
+    }
 
     if (cmd.op === 'setQuality') {
       if (typeof player.setPlaybackQualityRange !== 'function') return false
@@ -129,7 +183,7 @@ function cancelRetry(key: string): void {
   if (!pending) return
   clearTimeout(pending.timer)
   retries.delete(key)
-  pending.onSettled?.(false)
+  pending.onSettled?.(false, null)
 }
 
 /**
@@ -139,34 +193,39 @@ function cancelRetry(key: string): void {
  * "already applied" bookkeeping on a true here, so a page that never produces a player leaves the
  * feature eligible to retry on the next navigation instead of being silently marked done.
  */
-function runCommand(cmd: BridgeCommand, onSettled?: (applied: boolean) => void): boolean {
+function runCommand(
+  cmd: BridgeCommand,
+  onSettled?: (applied: boolean, value: number | null) => void
+): { applied: boolean; value: number | null } {
   const key = retryKey(cmd)
   cancelRetry(key)
 
-  if (applyCommand(cmd)) {
-    onSettled?.(true)
-    return true
+  const out: { value: number | null } = { value: null }
+  if (applyCommand(cmd, out)) {
+    onSettled?.(true, out.value)
+    return { applied: true, value: out.value }
   }
 
   const attempt = (): void => {
     const pending = retries.get(key)
     if (!pending) return
-    if (applyCommand(cmd)) {
+    const retryOut: { value: number | null } = { value: null }
+    if (applyCommand(cmd, retryOut)) {
       retries.delete(key)
-      onSettled?.(true)
+      onSettled?.(true, retryOut.value)
       return
     }
     pending.attempts += 1
     if (pending.attempts >= RETRY_ATTEMPTS) {
       retries.delete(key)
-      onSettled?.(false)
+      onSettled?.(false, null)
       return
     }
     pending.timer = window.setTimeout(attempt, RETRY_INTERVAL_MS)
   }
 
   retries.set(key, { attempts: 0, timer: window.setTimeout(attempt, RETRY_INTERVAL_MS), onSettled })
-  return false
+  return { applied: false, value: null }
 }
 
 /**
@@ -182,9 +241,14 @@ function remember(cmd: BridgeCommand): void {
   if (cmd.op === 'setQuality') {
     if (cmd.quality === 'auto') delete current.quality
     else current.quality = cmd.quality
-  } else {
+  } else if (cmd.op === 'setPlaybackRate') {
     current.rate = cmd.rate
   }
+  // Volume is deliberately NOT remembered, and this must stay an explicit op check rather than an
+  // `else`. YouTube persists volume itself once it is set through setVolume, so re-asserting on every
+  // media load would fight the user's own slider for the rest of the session. An `else` here would
+  // also have written `current.rate = undefined` on every volume command, silently wiping a
+  // remembered playback speed.
   desired.set(cmd.player, current)
 }
 
@@ -215,8 +279,9 @@ function onMediaEvent(event: Event): void {
       if (!player || !player.contains(media)) continue
       // Applied directly rather than via runCommand: there is a player right here, so there is
       // nothing to wait for, and a retry budget would only burn timers.
-      if (want.quality !== undefined) applyCommand({ op: 'setQuality', player: kind, quality: want.quality })
-      if (want.rate !== undefined) applyCommand({ op: 'setPlaybackRate', player: kind, rate: want.rate })
+      const out: { value: number | null } = { value: null }
+      if (want.quality !== undefined) applyCommand({ op: 'setQuality', player: kind, quality: want.quality }, out)
+      if (want.rate !== undefined) applyCommand({ op: 'setPlaybackRate', player: kind, rate: want.rate }, out)
     }
   } catch (error) {
     console.debug('[ytimprover] media-event re-apply failed', error)
@@ -226,7 +291,15 @@ function onMediaEvent(event: Event): void {
 /** Re-validates and clamps every operand. Never trusts the sender - see invariant 1 in protocol.ts. */
 function sanitize(raw: unknown): BridgeCommand | null {
   if (!raw || typeof raw !== 'object') return null
-  const cmd = raw as { op?: unknown; player?: unknown; quality?: unknown; rate?: unknown }
+  const cmd = raw as {
+    op?: unknown
+    player?: unknown
+    quality?: unknown
+    rate?: unknown
+    volume?: unknown
+    delta?: unknown
+    unmute?: unknown
+  }
   if (!isPlayerKind(cmd.player)) return null
 
   if (cmd.op === 'setQuality') {
@@ -236,6 +309,18 @@ function sanitize(raw: unknown): BridgeCommand | null {
     if (typeof cmd.rate !== 'number' || !Number.isFinite(cmd.rate)) return null
     const rate = Math.min(MAX_RATE, Math.max(MIN_RATE, cmd.rate))
     return { op: 'setPlaybackRate', player: cmd.player, rate }
+  }
+  if (cmd.op === 'setVolume') {
+    if (typeof cmd.volume !== 'number' || !Number.isFinite(cmd.volume)) return null
+    const volume = Math.min(MAX_VOLUME, Math.max(MIN_VOLUME, Math.round(cmd.volume)))
+    return { op: 'setVolume', player: cmd.player, volume }
+  }
+  if (cmd.op === 'adjustVolume') {
+    if (typeof cmd.delta !== 'number' || !Number.isFinite(cmd.delta)) return null
+    // Clamped to the full range rather than to a step size: the operand is a delta, and the result is
+    // clamped to 0-100 on application anyway, so a large value can only saturate - never escape.
+    const delta = Math.min(MAX_VOLUME, Math.max(-MAX_VOLUME, Math.round(cmd.delta)))
+    return { op: 'adjustVolume', player: cmd.player, delta, unmute: cmd.unmute === true }
   }
   return null
 }
@@ -263,24 +348,38 @@ function onBridgeMessage(event: Event): void {
       // Answered rather than dropped. An unanswered command strands its caller for the full timeout,
       // never commits, and is then re-sent on every navigation for the life of the tab - silently.
       console.debug('[ytimprover] rejected malformed bridge command', message.cmd)
-      send({ dir: 'res', id, token: INSTANCE_TOKEN, client, applied: false, pending: false })
+      send({ dir: 'res', id, token: INSTANCE_TOKEN, client, applied: false, pending: false, value: null })
       return
     }
 
     remember(cmd)
     let settled = false
-    const applied = runCommand(cmd, (ok) => {
+    const result = runCommand(cmd, (ok, value) => {
       // Second, authoritative answer once a retried command finally lands, gives up, or is superseded
-      if (settled) send({ dir: 'res', id, token: INSTANCE_TOKEN, client, applied: ok, pending: false })
+      if (settled) {
+        send({ dir: 'res', id, token: INSTANCE_TOKEN, client, applied: ok, pending: false, value })
+      }
     })
     settled = true
-    send({ dir: 'res', id, token: INSTANCE_TOKEN, client, applied, pending: !applied })
+    send({
+      dir: 'res',
+      id,
+      token: INSTANCE_TOKEN,
+      client,
+      applied: result.applied,
+      pending: !result.applied,
+      value: result.value,
+    })
   } catch (error) {
     console.debug('[ytimprover] bridge message failed', error)
   }
 }
 
 try {
+  // First, so its `volume` setter patch is installed before YouTube's player bundle loads and starts
+  // writing. Inert unless localStorage['ytimprover-diag'] === '1'. Temporary - see ../diag/channel.ts.
+  initVolumeDiag()
+
   document.addEventListener(BRIDGE_CHANNEL, onBridgeMessage)
   document.addEventListener('loadstart', onMediaEvent, true)
   // Announce unconditionally: if the ISOLATED script is not listening yet it will send `hello` and we

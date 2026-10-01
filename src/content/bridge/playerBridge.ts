@@ -30,8 +30,14 @@ let nextId = 1
 let listening = false
 let warnedUnavailable = false
 
+/** What a command settles to. `value` is the player reading for ops that produce one, else null. */
+export interface PlayerResult {
+  applied: boolean
+  value: number | null
+}
+
 interface PendingCommand {
-  resolve: (applied: boolean) => void
+  resolve: (result: PlayerResult) => void
   timer: number
 }
 const pending = new Map<number, PendingCommand>()
@@ -45,34 +51,34 @@ const pending = new Map<number, PendingCommand>()
  */
 interface QueuedCommand {
   cmd: BridgeCommand
-  resolve: (applied: boolean) => void
+  resolve: (result: PlayerResult) => void
   timer: number
 }
 let queue: QueuedCommand[] = []
 
-function settle(id: number, applied: boolean): void {
+function settle(id: number, result: PlayerResult): void {
   const entry = pending.get(id)
   if (!entry) return
   clearTimeout(entry.timer)
   pending.delete(id)
-  entry.resolve(applied)
+  entry.resolve(result)
 }
 
-function dispatch(cmd: BridgeCommand, resolve: (applied: boolean) => void): void {
+function dispatch(cmd: BridgeCommand, resolve: (result: PlayerResult) => void): void {
   if (token === null) {
     const entry: QueuedCommand = {
       cmd,
       resolve,
       timer: window.setTimeout(() => {
         queue = queue.filter((q) => q !== entry)
-        resolve(false)
+        resolve({ applied: false, value: null })
       }, COMMAND_TIMEOUT_MS),
     }
     queue.push(entry)
     return
   }
   const id = nextId++
-  const timer = window.setTimeout(() => settle(id, false), COMMAND_TIMEOUT_MS)
+  const timer = window.setTimeout(() => settle(id, { applied: false, value: null }), COMMAND_TIMEOUT_MS)
   pending.set(id, { resolve, timer })
   send({ dir: 'cmd', id, token, client: CLIENT_ID, cmd })
 }
@@ -107,7 +113,7 @@ function onMessage(event: Event): void {
   if (message.dir !== 'res' || message.token !== token || message.client !== CLIENT_ID) return
   // A `pending` response means MAIN has not given up yet - keep waiting for the authoritative answer
   if (message.pending) return
-  settle(message.id, message.applied)
+  settle(message.id, { applied: message.applied, value: message.value ?? null })
 }
 
 function ensureListening(): void {
@@ -129,8 +135,19 @@ function ensureListening(): void {
 
 /** Resolves true only once a player method was actually called. */
 export function sendPlayerCommand(cmd: BridgeCommand): Promise<boolean> {
+  return sendPlayerCommandForResult(cmd).then((result) => result.applied)
+}
+
+/**
+ * As sendPlayerCommand, but also hands back the reading the player produced.
+ *
+ * Separate from sendPlayerCommand so existing callers that only care whether the write landed keep
+ * their simple boolean, and so a caller that needs the number cannot forget to check `applied` first -
+ * `value` is meaningless when the command never reached a player.
+ */
+export function sendPlayerCommandForResult(cmd: BridgeCommand): Promise<PlayerResult> {
   ensureListening()
-  return new Promise<boolean>((resolve) => dispatch(cmd, resolve))
+  return new Promise<PlayerResult>((resolve) => dispatch(cmd, resolve))
 }
 
 export function initPlayerBridge(): void {

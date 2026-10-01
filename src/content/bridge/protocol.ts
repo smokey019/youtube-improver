@@ -82,9 +82,26 @@ export function isPlayerKind(value: unknown): value is PlayerKind {
 export const MIN_RATE = 0.25
 export const MAX_RATE = 2
 
+export const MIN_VOLUME = 0
+export const MAX_VOLUME = 100
+
 export type BridgeCommand =
   | { op: 'setQuality'; player: PlayerKind; quality: QualityLevel }
   | { op: 'setPlaybackRate'; player: PlayerKind; rate: number }
+  /** Absolute volume, 0-100 on YouTube's own scale. Used by the default-volume feature. */
+  | { op: 'setVolume'; player: PlayerKind; volume: number }
+  /**
+   * Relative volume change, for the mouse wheel.
+   *
+   * Relative rather than absolute on purpose. The wheel needs read-modify-write, and splitting that
+   * across the world boundary would mean a round trip to read, arithmetic here, and a second round
+   * trip to write - with YouTube free to change the volume in between, so fast scrolling would drop
+   * notches. MAIN reads, adds and writes in one synchronous step against the live player instead.
+   *
+   * `unmute` lifts a mute when turning up. It is an operand rather than a separate op because on a
+   * muted player "louder" that leaves it silent is not the operation the user asked for.
+   */
+  | { op: 'adjustVolume'; player: PlayerKind; delta: number; unmute: boolean }
 
 export type BridgeMessage =
   /** MAIN -> ISOLATED: "listener registered", sent on load and in answer to every `hello`. */
@@ -107,8 +124,21 @@ export type BridgeMessage =
    * message was received. The ISOLATED side keys its "already applied" bookkeeping off this, so a
    * handshake alone must never be able to report success. `pending` means no player existed yet and
    * MAIN has scheduled a retry, so the caller should keep waiting rather than treat it as failure.
+   *
+   * `value` carries a reading back for ops that produce one - currently the volume after an
+   * adjustVolume or setVolume. It is the player's own number, read back after the write rather than
+   * predicted from the operand, so the on-screen indicator cannot drift away from what YouTube
+   * actually did. null for ops that return nothing.
    */
-  | { dir: 'res'; id: number; token: string; client: string; applied: boolean; pending: boolean }
+  | {
+      dir: 'res'
+      id: number
+      token: string
+      client: string
+      applied: boolean
+      pending: boolean
+      value: number | null
+    }
 
 /**
  * The detail is a JSON string rather than an object on purpose.
