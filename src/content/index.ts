@@ -8,6 +8,7 @@ import { applyVideoSettings } from './features/videoQuality'
 import { applyVolumeControl } from './features/volumeControl'
 import { applyAutoplayControl } from './features/autoplayControl'
 import { applyHideElements } from './features/hideElements'
+import { applyCommentStyle } from './features/commentStyle'
 import { applyTheaterCinemaMode } from './features/theaterCinemaMode'
 
 function applyAll(settings: Settings): void {
@@ -18,6 +19,7 @@ function applyAll(settings: Settings): void {
   applyVolumeControl(settings.volume)
   applyAutoplayControl(settings.autoplay)
   applyHideElements(settings.hide)
+  applyCommentStyle(settings.comments)
   applyTheaterCinemaMode(settings.theater)
 }
 

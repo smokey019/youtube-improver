@@ -507,6 +507,18 @@ function buildApp(root: HTMLElement): void {
       ),
     ),
     section(
+      'Comments',
+      checkboxField(
+        'comments-alternate-backgrounds',
+        'Alternate comment backgrounds',
+        () => state.comments.alternateBackgrounds,
+        (v) => {
+          state.comments.alternateBackgrounds = v
+        },
+        'Every other comment gets a grey bubble, like the box around the video description.',
+      ),
+    ),
+    section(
       'Theater & Cinema mode',
       checkboxField(
         'theater-auto',

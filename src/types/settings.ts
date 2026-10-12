@@ -83,6 +83,10 @@ export interface Settings {
     comments: boolean
     relatedVideos: boolean
   }
+  comments: {
+    /** Every other top-level comment thread gets a rounded grey bubble, like the description box. */
+    alternateBackgrounds: boolean
+  }
   theater: {
     autoTheaterMode: boolean
     cinemaMode: boolean
@@ -111,6 +115,7 @@ export const DEFAULT_SETTINGS: Settings = {
     ignoreForPlaylists: true,
   },
   hide: { comments: false, relatedVideos: false },
+  comments: { alternateBackgrounds: false },
   theater: { autoTheaterMode: false, cinemaMode: false, cinemaModeColor: '#000000', cinemaModeOpacity: 85 },
 }
 
@@ -126,6 +131,7 @@ function mergeDefaults(partial: Partial<Settings> | undefined | null): Settings 
     volume: { ...DEFAULT_SETTINGS.volume, ...partial.volume },
     autoplay: { ...DEFAULT_SETTINGS.autoplay, ...partial.autoplay },
     hide: { ...DEFAULT_SETTINGS.hide, ...partial.hide },
+    comments: { ...DEFAULT_SETTINGS.comments, ...partial.comments },
     theater: { ...DEFAULT_SETTINGS.theater, ...partial.theater },
   }
 }
