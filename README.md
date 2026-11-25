@@ -30,6 +30,8 @@ Settings live in `chrome.storage.sync`, which Chrome keys by **extension ID**, a
 
 The options page has **Export settings** and **Import settings** buttons. Export downloads `youtube-improver-settings-YYYY-MM-DD.json`; import replaces the current settings with a file's after confirming. Imports are validated field by field (wrong types, out-of-range numbers, unknown keys and unrecognised quality or speed values are dropped or defaulted), a file with no settings in it is refused rather than treated as "reset", and a file whose settings would not fit in `chrome.storage.sync`'s 8 KB item limit is refused instead of truncated. Keep an export somewhere safe after configuring.
 
+The extension ID is now **pinned** by the `key` field in `manifest.json`, so it is `alockpdmnfpekpbeiaoicbefhdlhefgc` wherever `dist/` is loaded from, and moving the project folder or reloading the extension no longer orphans the saved settings. That key is the whole mechanism: **never delete or regenerate it**, because the ID changes with it and every saved setting is left behind under the old one. Only the public half lives in the manifest, and the private half was deliberately discarded, since an unpacked extension never needs it. (If this is ever published to the Chrome Web Store, the store manages its own key; upload without the `key` field.) The first time a build carrying the key is loaded, Chrome sees a different extension from the path-derived one it had before, so settings start empty once: export first, load the new build, then import.
+
 ## Development
 
 ```

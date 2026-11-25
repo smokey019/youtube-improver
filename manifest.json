@@ -2,6 +2,7 @@
   "manifest_version": 3,
   "name": "YouTube Improver",
   "version": "0.1.0",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA0eSNPbVw2HuIBDGrxQd0m6PpLpApcGvB+E0ZbH1L48GYfcTiaXeqPkb6pimgDeU51XpSd2MpfbkRyS1/p0Yx2rzRua1nO3JpaU7jo8pM7gj644wVeJ7VfghMnm1+N2e3Z+xOPdErdCzlD0+SzQSeFjQke4yxBpHuhQx0IrH0S3alupgiFGqHeLqotFTIavGx1v8mKFS+JGXQvAqv24I4/MpEVMAGk6QCUAJszCswTxvfBH9CxFJ0vL1L86CoSRDSmOtUozpxffNZSb2Of3flmY76/ZbiiMnLkMhlf+6ZPNI8mI7OJ67Uquz9lKeUluhkw18aJHJb2Z5WOesNWAKd4wIDAQAB",
   "description": "Customize YouTube's Home and Subscriptions pages, control default video/Shorts quality and playback speed, tame autoplay, and more.",
   "minimum_chrome_version": "111",
   "permissions": ["storage"],
