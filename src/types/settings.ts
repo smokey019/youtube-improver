@@ -149,6 +149,184 @@ function mergeDefaults(partial: Partial<Settings> | undefined | null): Settings 
   }
 }
 
+/**
+ * Settings backup files.
+ *
+ * Settings live in chrome.storage.sync under this extension's ID, and an unpacked extension's ID is derived
+ * from the folder it was loaded from - so removing it, reloading it from another path, or a browser profile
+ * reset all land on empty storage that reads as "everything reset to defaults". A file the user keeps is the
+ * only thing that survives that.
+ */
+export const SETTINGS_FILE_APP = 'youtube-improver'
+export const SETTINGS_FILE_VERSION = 1
+
+export function serializeSettings(settings: Settings): string {
+  return JSON.stringify(
+    { app: SETTINGS_FILE_APP, version: SETTINGS_FILE_VERSION, exportedAt: new Date().toISOString(), settings },
+    null,
+    2,
+  )
+}
+
+type Json = Record<string, unknown>
+
+function record(value: unknown): Json {
+  return typeof value === 'object' && value !== null && !Array.isArray(value) ? (value as Json) : {}
+}
+
+function bool(value: unknown, fallback: boolean): boolean {
+  return typeof value === 'boolean' ? value : fallback
+}
+
+function int(value: unknown, min: number, max: number, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? Math.min(max, Math.max(min, Math.round(value)))
+    : fallback
+}
+
+function oneOf<T>(value: unknown, allowed: readonly T[], fallback: T): T {
+  return allowed.find((candidate) => candidate === value) ?? fallback
+}
+
+/** null is a real value here ("leave YouTube's layout alone"), so only a missing or invalid value falls back. */
+function columns(value: unknown, fallback: number | null): number | null {
+  if (value === null) return null
+  return typeof value === 'number' && Number.isFinite(value) ? int(value, 1, 6, 1) : fallback
+}
+
+// Sanity bounds so a hostile or hand-edited file stays small to process. They do NOT guarantee the result
+// fits in chrome.storage.sync (two full lists come to ~21 KB against an 8 KB item limit), which is why the
+// importer also checks settingsFitInStorage and refuses, rather than truncating the user's lists silently.
+const MAX_KEYWORDS = 100
+const MAX_KEYWORD_LENGTH = 100
+
+/** chrome.storage.sync's QUOTA_BYTES_PER_ITEM. The whole Settings object is stored as a single item. */
+const STORAGE_QUOTA_BYTES_PER_ITEM = 8192
+
+/** Mirrors how the quota is counted: the key's length plus the JSON-stringified value's. */
+export function settingsFitInStorage(settings: Settings): boolean {
+  return STORAGE_KEY.length + new TextEncoder().encode(JSON.stringify(settings)).length <= STORAGE_QUOTA_BYTES_PER_ITEM
+}
+
+function keywords(value: unknown, fallback: string[]): string[] {
+  if (!Array.isArray(value)) return [...fallback]
+  return value
+    .filter((item): item is string => typeof item === 'string')
+    .map((item) => item.trim().slice(0, MAX_KEYWORD_LENGTH))
+    .filter((item) => item.length > 0)
+    .slice(0, MAX_KEYWORDS)
+}
+
+function hexColor(value: unknown, fallback: string): string {
+  return typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value) ? value.toLowerCase() : fallback
+}
+
+/**
+ * Builds a complete, valid Settings from untrusted input.
+ *
+ * Every field is checked and clamped individually, and anything unknown is dropped, so a hand-edited or
+ * future-version file can neither inject stray keys nor put the extension into a state its own options page
+ * could not produce. Missing or invalid fields take their default.
+ */
+export function parseSettings(raw: unknown): Settings {
+  const d = DEFAULT_SETTINGS
+  const root = record(raw)
+  const home = record(root.homePage)
+  const subs = record(root.subscriptionsPage)
+  const shorts = record(root.shorts)
+  const video = record(root.video)
+  const volume = record(root.volume)
+  const autoplay = record(root.autoplay)
+  const hide = record(root.hide)
+  const comments = record(root.comments)
+  const theater = record(root.theater)
+  const qualities = QUALITY_LEVELS.map((level) => level.value)
+
+  return {
+    homePage: {
+      enabled: bool(home.enabled, d.homePage.enabled),
+      hideShorts: bool(home.hideShorts, d.homePage.hideShorts),
+      hidePlayables: bool(home.hidePlayables, d.homePage.hidePlayables),
+      hideShelvesContaining: keywords(home.hideShelvesContaining, d.homePage.hideShelvesContaining),
+      videosPerRow: columns(home.videosPerRow, d.homePage.videosPerRow),
+    },
+    subscriptionsPage: {
+      enabled: bool(subs.enabled, d.subscriptionsPage.enabled),
+      hideShorts: bool(subs.hideShorts, d.subscriptionsPage.hideShorts),
+      hideVideosContaining: keywords(subs.hideVideosContaining, d.subscriptionsPage.hideVideosContaining),
+      hideWatched: bool(subs.hideWatched, d.subscriptionsPage.hideWatched),
+      hideWatchedPercent: int(subs.hideWatchedPercent, 1, 100, d.subscriptionsPage.hideWatchedPercent),
+      videosPerRow: columns(subs.videosPerRow, d.subscriptionsPage.videosPerRow),
+    },
+    shorts: {
+      hideInFeeds: bool(shorts.hideInFeeds, d.shorts.hideInFeeds),
+      hideInWatchSidebar: bool(shorts.hideInWatchSidebar, d.shorts.hideInWatchSidebar),
+      defaultQuality: oneOf(shorts.defaultQuality, qualities, d.shorts.defaultQuality),
+    },
+    video: {
+      defaultQuality: oneOf(video.defaultQuality, qualities, d.video.defaultQuality),
+      defaultQualityFullscreen: oneOf(video.defaultQualityFullscreen, qualities, d.video.defaultQualityFullscreen),
+      setDefaultPlaybackSpeed: bool(video.setDefaultPlaybackSpeed, d.video.setDefaultPlaybackSpeed),
+      defaultPlaybackSpeed: oneOf<PlaybackSpeed>(video.defaultPlaybackSpeed, PLAYBACK_SPEEDS, d.video.defaultPlaybackSpeed),
+    },
+    volume: {
+      setDefaultVolume: bool(volume.setDefaultVolume, d.volume.setDefaultVolume),
+      defaultVolume: int(volume.defaultVolume, 0, 100, d.volume.defaultVolume),
+      wheelVolumeEnabled: bool(volume.wheelVolumeEnabled, d.volume.wheelVolumeEnabled),
+      wheelVolumeStep: int(volume.wheelVolumeStep, 1, 25, d.volume.wheelVolumeStep),
+    },
+    autoplay: {
+      disableAutoplay: bool(autoplay.disableAutoplay, d.autoplay.disableAutoplay),
+      blockBackgroundTabAutoplay: bool(autoplay.blockBackgroundTabAutoplay, d.autoplay.blockBackgroundTabAutoplay),
+      blockForegroundTabAutoplay: bool(autoplay.blockForegroundTabAutoplay, d.autoplay.blockForegroundTabAutoplay),
+      ignoreForPlaylists: bool(autoplay.ignoreForPlaylists, d.autoplay.ignoreForPlaylists),
+    },
+    hide: {
+      comments: bool(hide.comments, d.hide.comments),
+      relatedVideos: bool(hide.relatedVideos, d.hide.relatedVideos),
+    },
+    comments: {
+      alternateBackgrounds: bool(comments.alternateBackgrounds, d.comments.alternateBackgrounds),
+    },
+    theater: {
+      autoTheaterMode: bool(theater.autoTheaterMode, d.theater.autoTheaterMode),
+      cinemaMode: bool(theater.cinemaMode, d.theater.cinemaMode),
+      cinemaModeColor: hexColor(theater.cinemaModeColor, d.theater.cinemaModeColor),
+      cinemaModeOpacity: int(theater.cinemaModeOpacity, 50, 100, d.theater.cinemaModeOpacity),
+    },
+  }
+}
+
+const SECTION_KEYS: (keyof Settings)[] = [
+  'homePage',
+  'subscriptionsPage',
+  'shorts',
+  'video',
+  'volume',
+  'autoplay',
+  'hide',
+  'comments',
+  'theater',
+]
+
+/**
+ * Reads a backup file's text. Returns null unless it is JSON that contains at least one settings section,
+ * so a stray file (or an empty `{}`) is refused rather than silently resetting everything to defaults.
+ * Accepts both the wrapped export format and a bare settings object.
+ */
+export function parseSettingsFile(text: string): Settings | null {
+  let data: unknown
+  try {
+    data = JSON.parse(text)
+  } catch {
+    return null
+  }
+  const root = record(data)
+  const body = 'settings' in root ? record(root.settings) : root
+  if (!SECTION_KEYS.some((key) => Object.keys(record(body[key])).length > 0)) return null
+  return parseSettings(body)
+}
+
 export async function getSettings(): Promise<Settings> {
   const stored = await chrome.storage.sync.get(STORAGE_KEY)
   return mergeDefaults(stored[STORAGE_KEY] as Partial<Settings> | undefined)

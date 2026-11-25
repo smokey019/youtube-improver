@@ -68,6 +68,7 @@ body {
 .header-actions {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 12px;
 }
 
@@ -95,7 +96,7 @@ body {
   pointer-events: none;
 }
 
-.reset-button {
+.header-button {
   border: 1px solid var(--color-border);
   background: var(--color-surface);
   color: var(--color-text);
@@ -105,7 +106,7 @@ body {
   cursor: pointer;
 }
 
-.reset-button:hover {
+.header-button:hover {
   border-color: var(--color-accent);
 }
 
@@ -193,7 +194,7 @@ input[type='checkbox'] {
 input[type='color']:focus-visible,
 input[type='range']:focus-visible,
 input[type='checkbox']:focus-visible,
-.reset-button:focus-visible {
+.header-button:focus-visible {
   outline: 2px solid var(--color-focus);
   outline-offset: 2px;
 }

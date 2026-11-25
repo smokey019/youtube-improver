@@ -3,7 +3,10 @@ import {
   PLAYBACK_SPEEDS,
   QUALITY_LEVELS,
   getSettings,
+  parseSettingsFile,
   saveSettings,
+  serializeSettings,
+  settingsFitInStorage,
   type PlaybackSpeed,
   type QualityLevel,
   type Settings,
@@ -47,17 +50,20 @@ function fieldRow(id: string, labelText: string, control: HTMLElement, hint?: st
  */
 let settingsLoaded = false
 
-async function persist(): Promise<void> {
-  if (!settingsLoaded) return
+/** Resolves true only if the write actually landed, so a caller can follow up with its own status. */
+async function persist(): Promise<boolean> {
+  if (!settingsLoaded) return false
   try {
     await saveSettings(state)
     showStatus('Saved', false)
+    return true
   } catch (error) {
     // A rejected write used to be swallowed by the `void persist()` callers, so the only sign of
     // failure was the "Saved" note not appearing - while the control kept showing the value that was
     // never stored. chrome.storage.sync rejects on quota, which is reachable via the keyword list.
     console.error('[ytimprover] failed to save settings', error)
     showStatus('Could not save - see console', true)
+    return false
   }
 }
 
@@ -276,10 +282,77 @@ function gateSectionOnMaster(masterId: string): void {
   populators.push(sync)
 }
 
+const BACKUP_HINT = 'Use "Export settings" first if you want a backup.'
+
+/**
+ * Asks before throwing everything away. The button used to wipe and save in one click, and since the saved
+ * copy syncs, a stray click was both instant and unrecoverable.
+ */
 async function resetToDefaults(): Promise<void> {
+  if (!settingsLoaded) return
+  if (!window.confirm(`Reset every setting to its default?\n\nThis replaces all of your saved settings and cannot be undone. ${BACKUP_HINT}`)) {
+    return
+  }
   state = structuredClone(DEFAULT_SETTINGS)
   populate()
   await persist()
+}
+
+function exportSettings(): void {
+  // Exporting before the stored settings are read would write out the defaults as if they were the user's
+  if (!settingsLoaded) return
+  const url = URL.createObjectURL(new Blob([serializeSettings(state)], { type: 'application/json' }))
+  const link = el('a')
+  link.href = url
+  link.download = `youtube-improver-settings-${new Date().toISOString().slice(0, 10)}.json`
+  document.body.append(link)
+  link.click()
+  link.remove()
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+  showStatus('Exported', false)
+}
+
+/** A real export is a few KB; this only exists to refuse an obviously wrong file before reading it. */
+const MAX_IMPORT_BYTES = 256 * 1024
+
+async function importSettings(file: File): Promise<void> {
+  if (!settingsLoaded) return
+  if (file.size > MAX_IMPORT_BYTES) {
+    showStatus('That file is too large to be a settings export', true)
+    return
+  }
+  let contents: string
+  try {
+    contents = await file.text()
+  } catch (error) {
+    console.error('[ytimprover] failed to read settings file', error)
+    showStatus('Could not read that file', true)
+    return
+  }
+  const imported = parseSettingsFile(contents)
+  if (!imported) {
+    showStatus('Not a YouTube Improver settings file', true)
+    return
+  }
+  // Checked before the confirm, so the user is never asked to replace their settings with ones that cannot be saved
+  if (!settingsFitInStorage(imported)) {
+    showStatus('Those settings are too large to save - shorten the keyword lists', true)
+    return
+  }
+  if (!window.confirm(`Replace your current settings with the ones in "${file.name}"?\n\nThis cannot be undone. ${BACKUP_HINT}`)) {
+    return
+  }
+  const previous = state
+  state = imported
+  populate()
+  if (await persist()) {
+    showStatus('Imported', false)
+    return
+  }
+  // The write was rejected (persist has already said so). Put the old values back rather than leave the page
+  // showing an import that was never stored, which would vanish on the next open.
+  state = previous
+  populate()
 }
 
 function buildHeader(): HTMLElement {
@@ -292,12 +365,31 @@ function buildHeader(): HTMLElement {
   const status = el('span', 'save-status')
   status.id = 'save-status'
   status.textContent = 'Saved'
-  const resetButton = el('button', 'reset-button')
+  const exportButton = el('button', 'header-button')
+  exportButton.type = 'button'
+  exportButton.textContent = 'Export settings'
+  exportButton.addEventListener('click', exportSettings)
+  // The visible control is a button; the real file picker stays hidden and is opened by it
+  const importInput = el('input')
+  importInput.type = 'file'
+  importInput.accept = '.json,application/json'
+  importInput.hidden = true
+  importInput.addEventListener('change', () => {
+    const file = importInput.files?.[0]
+    // Cleared so picking the same file again still fires `change`
+    importInput.value = ''
+    if (file) void importSettings(file)
+  })
+  const importButton = el('button', 'header-button')
+  importButton.type = 'button'
+  importButton.textContent = 'Import settings'
+  importButton.addEventListener('click', () => importInput.click())
+  const resetButton = el('button', 'header-button')
   resetButton.type = 'button'
   resetButton.textContent = 'Reset to defaults'
   resetButton.addEventListener('click', () => void resetToDefaults())
   const actions = el('div', 'header-actions')
-  actions.append(status, resetButton)
+  actions.append(status, exportButton, importButton, resetButton, importInput)
   header.append(titleGroup, actions)
   return header
 }

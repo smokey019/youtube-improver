@@ -24,6 +24,12 @@ This produces a loadable extension in `dist/`.
 3. Click "Load unpacked" and select the `dist/` folder
 4. Open any youtube.com page, then click the extension's toolbar icon (or right-click it → Options) to open the settings page
 
+## Backing up your settings
+
+Settings live in `chrome.storage.sync`, which Chrome keys by **extension ID**, and an unpacked extension's ID is derived from the folder it was loaded from. Removing the extension, loading `dist/` from a different path, or resetting the browser profile therefore lands on empty storage, which looks exactly like "all my settings reset to defaults" (the Home and Subscriptions master toggles ship off, so those features appear to just stop working). Nothing in the extension itself clears settings: the only writes are the options page's own saves and its "Reset to defaults" button, which now asks first.
+
+The options page has **Export settings** and **Import settings** buttons. Export downloads `youtube-improver-settings-YYYY-MM-DD.json`; import replaces the current settings with a file's after confirming. Imports are validated field by field (wrong types, out-of-range numbers, unknown keys and unrecognised quality or speed values are dropped or defaulted), a file with no settings in it is refused rather than treated as "reset", and a file whose settings would not fit in `chrome.storage.sync`'s 8 KB item limit is refused instead of truncated. Keep an export somewhere safe after configuring.
+
 ## Development
 
 ```
@@ -150,6 +156,6 @@ Selectors were cross-checked twice: first against real saved YouTube pages (Home
 
 ## Roadmap (not yet built)
 
-From the Enhancer-for-YouTube feature audit this project started from: mini/pop-up player, volume booster overlay control, full custom theme system, custom CSS/JS injection, keyboard shortcut remapping, screenshot capture, video filters (brightness/contrast/etc.), control-bar customization, and settings import/export.
+From the Enhancer-for-YouTube feature audit this project started from: mini/pop-up player, volume booster overlay control, full custom theme system, custom CSS/JS injection, keyboard shortcut remapping, screenshot capture, video filters (brightness/contrast/etc.), and control-bar customization.
 
 Other `.ytp-*` player-control classes confirmed present on a live watch page that could seed future features: `ytp-play-button`/`ytp-large-play-button`, `ytp-pip-button` (Picture-in-Picture), `ytp-fullscreen-button`, `ytp-subtitles-button` (captions), `ytp-remote-button` (Cast), `ytp-overflow-button` (settings menu), `ytp-playlist-menu-button`. For volume: `ytp-mute-button`, `ytp-volume-panel` and `ytp-volume-slider` all exist in YouTube's shipping player stylesheets. (An earlier version of this file claimed no mute-button class existed and pointed at `ytp-volume-icon` instead — `ytp-mute-button` has five rules across the two stylesheets, and `ytp-volume-icon` has none. A "not observed" claim is the most expensive kind to get wrong, because it closes off the search.)
