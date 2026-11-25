@@ -100,9 +100,13 @@ function onMessage(event: Event): void {
       // Two copies of this extension are installed (commonly an unpacked dev build alongside a store
       // build). Each pair talks past the other and settings will appear to fight. Worth saying out
       // loud, because the symptom - values flickering between two settings - looks like a code bug.
+      // Each installed copy runs its own ISOLATED script and warns here too, so the console ends up with one
+      // line per copy, each naming its own ID - which is what identifies the duplicate at chrome://extensions.
       console.warn(
-        '[ytimprover] a second player bridge announced itself. Another copy of this extension is ' +
-          'probably installed; disable one at chrome://extensions or their settings will conflict.'
+        `[ytimprover] extension ${chrome.runtime.id}: a second player bridge announced itself. Another copy ` +
+          'of this extension is probably installed; disable one at chrome://extensions or their settings will ' +
+          'conflict. If you only have one copy, this tab is still running scripts from before the extension ' +
+          'was reloaded - refresh it.'
       )
     }
     return

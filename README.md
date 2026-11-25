@@ -83,6 +83,7 @@ Two consequences worth knowing:
   precisely because failure was indistinguishable from success. `'auto'` is sent through to
   `setPlaybackQualityRange` as a real operand rather than short-circuited — treating it as a no-op both
   reported success for a write that never happened *and* made a forced quality impossible to release.
+- **A manual quality pick beats the default for that video.** The MAIN script re-applies the remembered quality on every `loadstart`, and choosing a quality in the player's own menu rebuilds the media pipeline (`emptied` → `loadstart`), so the re-assert used to fire on the user's choice and revert it within half a second. It now notes a *trusted* click or Enter/Space inside `.ytp-quality-menu` and leaves quality alone until the next quality command from the ISOLATED side (every navigation sends one, so the default still applies to the next video). If YouTube renames that menu class the detection stops matching and the old lock behaviour returns.
 - **`setPlaybackQualityRange` writes YouTube's own `yt-player-quality` localStorage preference** with a
   ~360-day TTL. That is YouTube's behaviour, not ours, but it means a forced quality persists in
   YouTube's own settings and outlives the extension.
@@ -96,6 +97,8 @@ version wrote `<video>.volume` directly, so YouTube's heartbeat later stamped it
 over the user's. Setting volume through the player API updates the model YouTube re-asserts from, and the
 bridge hands the player's own reading back so the wheel's on-screen indicator matches YouTube's slider.
 
+Both ops call `setVolume(v, true)`: the second argument makes YouTube store the value as its own `yt-player-volume` preference, exactly as its slider does. The one-argument form was not enough, and an earlier version of this section wrongly claimed YouTube "persists it for free". It only updates the player's in-memory model, and the **Shorts player restores its stored volume (100 when none is stored) about 100ms after a Short activates** — so the default read back as 15 and then snapped to 100 on every Short, with no media event in between to hook a re-assert onto. Storing the value makes that restore agree with us. The argument is undocumented; if YouTube drops it this degrades to the old behaviour. Like quality, the stored volume outlives the extension.
+
 ## Deliberate defaults
 
 Almost everything ships **off**, so a fresh install leaves YouTube alone. Two decisions are worth
@@ -108,6 +111,8 @@ stating explicitly, because an audit flagged both as surprising:
   1× is a real speed someone may want forced. Without an explicit on/off flag the shipped default
   silently overrode the rate YouTube restores from its own preference, which reads as "YouTube stopped
   remembering my speed". Forcing a speed now requires ticking the box.
+
+Everything on the Home and Subscriptions pages (videos per row, hiding Shorts, shelf and video filters) sits behind that page's master toggle, `homePage.enabled` / `subscriptionsPage.enabled`, which also ships **off**. A page-type feature with its toggle off does nothing at all — it does not even inject a `<style>` tag — which is indistinguishable from a broken feature when "Videos per row" is set but the checkbox above it is not ticked. The options page now greys out the dependent rows while the toggle is off. If "videos per row does nothing", check the toggle before debugging selectors.
 
 Hiding Shorts is split across three independent settings, which overlap on purpose:
 `homePage.hideShorts` and `subscriptionsPage.hideShorts` are gated behind their page's master toggle,

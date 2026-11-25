@@ -173,6 +173,7 @@ function videosPerRowField(
 function tagsField(
   id: string,
   labelText: string,
+  placeholder: string,
   get: () => string[],
   set: (value: string[]) => void,
   hint?: string,
@@ -180,7 +181,7 @@ function tagsField(
   const input = el('input', 'text-input')
   input.type = 'text'
   input.id = id
-  input.placeholder = 'e.g. Mixes, Shorts, People also watched'
+  input.placeholder = placeholder
   input.addEventListener('change', () => {
     set(
       input.value
@@ -249,6 +250,32 @@ function section(title: string, ...rows: HTMLElement[]): HTMLElement {
   return sectionEl
 }
 
+/**
+ * Greys out the other rows of a section while its master checkbox is off.
+ *
+ * The Home and Subscriptions features are all gated behind an "Enable ... customization" checkbox that ships
+ * unticked. Without a visible dependency, setting "Videos per row" while it is off saves fine, shows the
+ * chosen value, and does nothing on YouTube - which reads exactly like a broken feature. Disabled controls
+ * keep their stored values, so ticking the master brings them straight back.
+ */
+function gateSectionOnMaster(masterId: string): void {
+  const master = document.getElementById(masterId)
+  const sectionEl = master?.closest('section')
+  if (!(master instanceof HTMLInputElement) || !sectionEl) return
+  const rows = Array.from(sectionEl.querySelectorAll<HTMLElement>('.field')).filter((row) => !row.contains(master))
+  const sync = (): void => {
+    for (const row of rows) {
+      row.classList.toggle('field-disabled', !master.checked)
+      row.querySelectorAll<HTMLInputElement | HTMLSelectElement>('input, select').forEach((control) => {
+        control.disabled = !master.checked
+      })
+    }
+  }
+  master.addEventListener('change', sync)
+  // After the controls' own populators (registered while the section was built), so it reads a filled-in master
+  populators.push(sync)
+}
+
 async function resetToDefaults(): Promise<void> {
   state = structuredClone(DEFAULT_SETTINGS)
   populate()
@@ -287,6 +314,7 @@ function buildApp(root: HTMLElement): void {
         (v) => {
           state.homePage.enabled = v
         },
+        'Turn this on for the options below to take effect. While it is off they are ignored.',
       ),
       checkboxField(
         'home-hide-shorts',
@@ -307,6 +335,7 @@ function buildApp(root: HTMLElement): void {
       tagsField(
         'home-hide-shelves',
         'Hide shelves containing',
+        'e.g. Mixes, Shorts, People also watched',
         () => state.homePage.hideShelvesContaining,
         (v) => {
           state.homePage.hideShelvesContaining = v
@@ -331,6 +360,7 @@ function buildApp(root: HTMLElement): void {
         (v) => {
           state.subscriptionsPage.enabled = v
         },
+        'Turn this on for the options below to take effect. While it is off they are ignored.',
       ),
       checkboxField(
         'subs-hide-shorts',
@@ -338,6 +368,35 @@ function buildApp(root: HTMLElement): void {
         () => state.subscriptionsPage.hideShorts,
         (v) => {
           state.subscriptionsPage.hideShorts = v
+        },
+      ),
+      tagsField(
+        'subs-hide-videos',
+        'Hide videos with titles containing',
+        'e.g. Livestream, Trailer, Reaction',
+        () => state.subscriptionsPage.hideVideosContaining,
+        (v) => {
+          state.subscriptionsPage.hideVideosContaining = v
+        },
+        'Comma-separated keywords; a video is hidden if its title contains any of them (case-insensitive).',
+      ),
+      checkboxField(
+        'subs-hide-watched',
+        'Hide videos you have watched',
+        () => state.subscriptionsPage.hideWatched,
+        (v) => {
+          state.subscriptionsPage.hideWatched = v
+        },
+        'Goes by the red progress bar under the thumbnail, so it needs YouTube watch history turned on.',
+      ),
+      rangeField(
+        'subs-hide-watched-percent',
+        'Count as watched at',
+        1,
+        100,
+        () => state.subscriptionsPage.hideWatchedPercent,
+        (v) => {
+          state.subscriptionsPage.hideWatchedPercent = v
         },
       ),
       videosPerRowField(
@@ -556,6 +615,8 @@ function buildApp(root: HTMLElement): void {
       ),
     ),
   )
+  gateSectionOnMaster('home-enabled')
+  gateSectionOnMaster('subs-enabled')
 }
 
 async function init(): Promise<void> {

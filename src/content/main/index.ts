@@ -33,7 +33,8 @@ import type { QualityLevel } from '../../types/settings'
 interface PlayerApi extends HTMLElement {
   setPlaybackQualityRange?: (min: QualityLevel, max: QualityLevel) => void
   setPlaybackRate?: (rate: number) => void
-  setVolume?: (volume: number) => void
+  /** The second argument asks YouTube to write its own `yt-player-volume` preference. Undocumented. */
+  setVolume?: (volume: number, persist?: boolean) => void
   getVolume?: () => number
   isMuted?: () => boolean
   unMute?: () => void
@@ -57,6 +58,18 @@ interface Desired {
   rate?: number
 }
 const desired = new Map<PlayerKind, Desired>()
+
+/**
+ * Players whose quality the user chose by hand, in the player's own settings menu, since the last quality
+ * command from the ISOLATED side.
+ *
+ * Without this the `loadstart` re-assert below turned the default into a lock. Switching quality makes the
+ * player rebuild its media pipeline (`emptied` -> `loadstart`), so the re-assert fired on the user's own
+ * choice and snapped it straight back - observed as a real click on 720p reverting to the default within
+ * half a second. A new quality command (every navigation sends one) clears the mark, so the default still
+ * applies to the next video.
+ */
+const userPickedQuality = new Set<PlayerKind>()
 
 interface PendingRetry {
   attempts: number
@@ -130,7 +143,15 @@ function applyCommand(cmd: BridgeCommand, out: { value: number | null }): boolea
       }
 
       const clamped = Math.min(MAX_VOLUME, Math.max(MIN_VOLUME, Math.round(target)))
-      player.setVolume(clamped)
+      // `true` makes YouTube store the value as its own volume preference, exactly as its slider does.
+      //
+      // Without it the write only reaches the player's in-memory model. The watch player tolerates that,
+      // but the Shorts player restores its *stored* volume once a Short activates (100 when nothing is
+      // stored), and that restore lands about 100ms after our write - observed as `setVolume(15)` reading
+      // back 15 and then 100 on every Short, with no media event in between to hook a re-assert onto.
+      // Storing the value makes the restore agree with us instead of racing us. If YouTube ever drops the
+      // argument this degrades to the old behaviour rather than failing.
+      player.setVolume(clamped, true)
 
       // Only the wheel path may unmute, and only when turning up. Unmuting from the default-volume
       // path would override a mute the user deliberately set, on every single video load.
@@ -240,6 +261,8 @@ function remember(cmd: BridgeCommand): void {
   if (cmd.op === 'setQuality') {
     if (cmd.quality === 'auto') delete current.quality
     else current.quality = cmd.quality
+    // A fresh command is authoritative again: the default applies to whatever is playing now
+    userPickedQuality.delete(cmd.player)
   } else if (cmd.op === 'setPlaybackRate') {
     current.rate = cmd.rate
   }
@@ -279,11 +302,37 @@ function onMediaEvent(event: Event): void {
       // Applied directly rather than via runCommand: there is a player right here, so there is
       // nothing to wait for, and a retry budget would only burn timers.
       const out: { value: number | null } = { value: null }
-      if (want.quality !== undefined) applyCommand({ op: 'setQuality', player: kind, quality: want.quality }, out)
+      if (want.quality !== undefined && !userPickedQuality.has(kind)) {
+        applyCommand({ op: 'setQuality', player: kind, quality: want.quality }, out)
+      }
       if (want.rate !== undefined) applyCommand({ op: 'setPlaybackRate', player: kind, rate: want.rate }, out)
     }
   } catch (error) {
     console.debug('[ytimprover] media-event re-apply failed', error)
+  }
+}
+
+/**
+ * Notes when the user picks a quality from the player's own menu, so the re-assert above leaves it alone.
+ *
+ * `isTrusted` is what makes this safe to key behaviour off: only real user input carries it, so neither the
+ * page nor another script can forge a "user picked" mark. Enter and Space are handled as well as clicks
+ * because the menu is keyboard-operable and YouTube acts on those keys without dispatching a click.
+ *
+ * The selector is YouTube's current markup (live-checked: the submenu panel is `.ytp-quality-menu`). If it
+ * ever changes this simply stops matching, and quality reverts to being re-asserted - the old behaviour.
+ */
+function onUserQualityPick(event: Event): void {
+  try {
+    if (!event.isTrusted) return
+    if (event instanceof KeyboardEvent && event.key !== 'Enter' && event.key !== ' ') return
+    const target = event.target
+    if (!(target instanceof Element) || !target.closest('.ytp-quality-menu .ytp-menuitem')) return
+    const player = target.closest('#movie_player, #shorts-player')
+    if (!player) return
+    userPickedQuality.add(player.id === 'shorts-player' ? 'shorts' : 'watch')
+  } catch (error) {
+    console.debug('[ytimprover] quality-pick detection failed', error)
   }
 }
 
@@ -377,6 +426,8 @@ function onBridgeMessage(event: Event): void {
 try {
   document.addEventListener(BRIDGE_CHANNEL, onBridgeMessage)
   document.addEventListener('loadstart', onMediaEvent, true)
+  document.addEventListener('click', onUserQualityPick, true)
+  document.addEventListener('keydown', onUserQualityPick, true)
   // Announce unconditionally: if the ISOLATED script is not listening yet it will send `hello` and we
   // answer that instead, so injection order between the two scripts does not matter.
   send({ dir: 'ready', token: INSTANCE_TOKEN })

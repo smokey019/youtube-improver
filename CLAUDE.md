@@ -17,4 +17,7 @@ Chrome MV3 extension (TypeScript, Vite, Bun). See README.md for features and the
 - Player methods (`setVolume`, `setPlaybackRate`, …) are invisible to the ISOLATED content script. Never feature-detect them there; send a bridge command. Verify from inside the extension, not the DevTools console (page world).
 - YouTube's CSS classes are camelCase (`ytContentMetadataViewModelMetadataRow`), not the old kebab-case. Selectors that worked against older DOM dumps may match nothing.
 - Feed selectors must be scoped to `ytd-browse[page-subtype="..."]:not([hidden])`; the SPA keeps a hidden second copy mounted.
+- Home/Subscriptions features (videos per row, hide Shorts, filters) do nothing unless `homePage.enabled` / `subscriptionsPage.enabled` is true, and both default to false. With the toggle off the feature injects no `<style>` at all. Check the options page before debugging selectors; the CSS itself still works on current YouTube.
+- `player.setVolume(v)` alone is not persisted, and the Shorts player restores its stored volume ~100ms after a Short activates, undoing the write. Always pass `true` as the second argument (see `main/index.ts`).
+- `setPlaybackQualityRange` reloads the media (`emptied` → `loadstart`), so anything that re-asserts quality on `loadstart` also fires on the user's own menu pick. `userPickedQuality` in `main/index.ts` exists for that.
 - Diagnostic probes must be inert unless invoked and must not share the bridge channel or state with the feature they measure. A probe that did both once caused the bug it was meant to find.

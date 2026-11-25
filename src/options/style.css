@@ -152,6 +152,17 @@ body {
   gap: 6px;
 }
 
+/* Rows whose section master toggle is off: still visible and still holding their values, but plainly inert */
+.field-disabled {
+  opacity: 0.5;
+}
+
+.field-disabled input,
+.field-disabled select,
+.field-disabled label {
+  cursor: not-allowed;
+}
+
 .field-hint {
   margin: 0;
   font-size: 12px;

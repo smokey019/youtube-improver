@@ -41,6 +41,12 @@ export interface Settings {
   subscriptionsPage: {
     enabled: boolean
     hideShorts: boolean
+    /** Case-insensitive title substrings; a video is hidden if its title contains any of these. */
+    hideVideosContaining: string[]
+    /** Read off the red progress bar under the thumbnail, so it only knows what watch history shows there. */
+    hideWatched: boolean
+    /** 1-100; a video is hidden once its progress bar reaches this percentage */
+    hideWatchedPercent: number
     videosPerRow: number | null
   }
   shorts: {
@@ -99,7 +105,14 @@ export interface Settings {
 
 export const DEFAULT_SETTINGS: Settings = {
   homePage: { enabled: false, hideShorts: false, hidePlayables: true, hideShelvesContaining: [], videosPerRow: null },
-  subscriptionsPage: { enabled: false, hideShorts: false, videosPerRow: null },
+  subscriptionsPage: {
+    enabled: false,
+    hideShorts: false,
+    hideVideosContaining: [],
+    hideWatched: false,
+    hideWatchedPercent: 75,
+    videosPerRow: null,
+  },
   shorts: { hideInFeeds: false, hideInWatchSidebar: false, defaultQuality: 'auto' },
   video: {
     defaultQuality: 'auto',
